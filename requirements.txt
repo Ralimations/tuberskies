@@ -1,0 +1,6 @@
+streamlit
+pandas
+plotly
+ollama
+google-api-python-client
+python-dotenv
