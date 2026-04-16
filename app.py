@@ -32,22 +32,24 @@ ARIA_SYSTEM_PROMPT = (
 APP_CSS = """
 <style>
 :root {
-    --bg: #0b1020;
-    --surface: #141b33;
-    --surface-soft: #1a2342;
-    --ink: #eef2ff;
-    --muted: #b4bfdc;
+    --bg: #0d1324;
+    --surface: #151d34;
+    --surface-soft: #1b2542;
+    --ink: #edf2ff;
+    --muted: #a8b5d3;
     --line: rgba(255, 255, 255, 0.08);
-    --accent: #e7b45d;
-    --accent-deep: #f3d08c;
-    --sky: #6a8cff;
-    --shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
-    --radius-lg: 24px;
-    --radius-md: 18px;
+    --accent: #e2b15b;
+    --accent-deep: #f2cf8c;
+    --sky: #79a0ff;
+    --shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
+    --radius-lg: 22px;
+    --radius-md: 16px;
 }
 
 .stApp {
-    background: linear-gradient(180deg, #0b1020 0%, #101936 52%, #0d1530 100%);
+    background:
+        radial-gradient(circle at top right, rgba(121, 160, 255, 0.1), transparent 22%),
+        linear-gradient(180deg, #0d1324 0%, #101935 52%, #0d1530 100%);
     color: var(--ink);
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
@@ -56,14 +58,8 @@ APP_CSS = """
     background: transparent;
 }
 
-[data-testid="stToolbar"] {
-    display: none;
-}
-
-[data-testid="stDecoration"] {
-    display: none;
-}
-
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
 [data-testid="stStatusWidget"] {
     display: none;
 }
@@ -77,9 +73,9 @@ APP_CSS = """
 }
 
 .block-container {
-    padding-top: 0.75rem;
+    padding-top: 0.55rem;
     padding-bottom: 2rem;
-    max-width: 1460px;
+    max-width: 1380px;
     margin: 0 auto;
 }
 
@@ -94,30 +90,30 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .hero-shell {
-    background: linear-gradient(135deg, #151d39 0%, #10172d 100%);
+    background: linear-gradient(135deg, #151d34 0%, #12192d 100%);
     border: 1px solid var(--line);
-    border-radius: 26px;
-    padding: 1.35rem 1.4rem;
+    border-radius: 20px;
+    padding: 1.05rem 1.1rem;
     box-shadow: var(--shadow);
-    margin-bottom: 1rem;
+    margin-bottom: 0.8rem;
 }
 
 .hero-kicker {
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     color: var(--accent-deep);
     font-weight: 700;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.4rem;
 }
 
 .hero-title {
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
-    font-size: clamp(2.2rem, 4vw, 3.6rem);
-    line-height: 0.98;
+    font-size: clamp(1.8rem, 3vw, 2.7rem);
+    line-height: 1.02;
     color: var(--ink);
-    max-width: 11ch;
-    margin: 0 0 0.6rem 0;
+    max-width: 14ch;
+    margin: 0 0 0.35rem 0;
 }
 
 .hero-signature {
@@ -130,70 +126,71 @@ p, label, .stCaption, .stMarkdown {
 
 .hero-copy {
     max-width: 62ch;
-    font-size: 1rem;
+    font-size: 0.96rem;
     color: var(--muted);
-    line-height: 1.7;
+    line-height: 1.55;
 }
 
 .hero-note {
-    margin-top: 1.2rem;
+    margin-top: 0.75rem;
     display: inline-flex;
     align-items: center;
     gap: 0.65rem;
-    padding: 0.58rem 0.9rem;
+    padding: 0.45rem 0.75rem;
     border-radius: 999px;
     border: 1px solid rgba(246, 207, 135, 0.18);
     background: rgba(255, 255, 255, 0.05);
     color: var(--muted);
-    font-size: 0.84rem;
+    font-size: 0.78rem;
 }
 
 .section-chip {
     display: inline-block;
-    padding: 0.35rem 0.72rem;
+    padding: 0.26rem 0.58rem;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--line);
     border-radius: 999px;
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     color: var(--accent-deep);
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    margin-bottom: 0.6rem;
+    margin-bottom: 0.35rem;
 }
 
 .section-title {
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
-    font-size: clamp(1.9rem, 2.4vw, 2.8rem);
+    font-size: clamp(1.45rem, 2vw, 2.1rem);
     color: var(--ink);
-    margin: 0 0 0.25rem 0;
+    margin: 0 0 0.15rem 0;
 }
 
 .section-copy {
     color: var(--muted);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.65rem;
     max-width: 64ch;
+    font-size: 0.92rem;
 }
 
 .panel-shell {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    padding: 1rem 1.05rem 0.85rem 1.05rem;
-    box-shadow: var(--shadow);
-    margin-bottom: 1rem;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    margin-bottom: 0.7rem;
 }
 
 .panel-title {
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
     color: var(--ink);
-    font-size: 1.12rem;
-    margin-bottom: 0.2rem;
+    font-size: 1rem;
+    margin-bottom: 0.12rem;
 }
 
 .panel-copy {
     color: var(--muted);
-    font-size: 0.92rem;
-    margin-bottom: 0.75rem;
+    font-size: 0.87rem;
+    margin-bottom: 0.55rem;
 }
 
 .masthead-grid {
@@ -212,22 +209,34 @@ p, label, .stCaption, .stMarkdown {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
-    padding: 0.5rem 0.82rem;
+    padding: 0.42rem 0.72rem;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--line);
     color: var(--accent-deep);
-    font-size: 0.8rem;
+    font-size: 0.76rem;
     width: fit-content;
 }
 
-.board-lane {
+.board-lane,
+.snapshot-card,
+.status-chip,
+.stat-card,
+.insight-card,
+[data-testid="stMetric"],
+[data-testid="stDataFrame"],
+[data-testid="stPlotlyChart"],
+[data-testid="stChatMessage"],
+[data-testid="stFileUploader"] {
     background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
     border: 1px solid var(--line);
-    border-radius: 22px;
-    padding: 0.85rem;
-    min-height: 220px;
     box-shadow: var(--shadow);
+}
+
+.board-lane {
+    border-radius: 18px;
+    padding: 0.85rem;
+    min-height: 180px;
 }
 
 .board-lane-title {
@@ -240,9 +249,9 @@ p, label, .stCaption, .stMarkdown {
 .song-card {
     background: rgba(255, 255, 255, 0.045);
     border: 1px solid var(--line);
-    border-radius: 18px;
-    padding: 0.7rem 0.75rem;
-    margin-bottom: 0.65rem;
+    border-radius: 14px;
+    padding: 0.6rem 0.65rem;
+    margin-bottom: 0.55rem;
 }
 
 .song-card-title {
@@ -258,18 +267,15 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .snapshot-card {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    padding: 1rem;
-    box-shadow: var(--shadow);
+    border-radius: 18px;
+    padding: 0.9rem;
 }
 
 .snapshot-title {
     color: var(--ink);
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
-    font-size: 1.2rem;
-    margin-bottom: 0.45rem;
+    font-size: 1.05rem;
+    margin-bottom: 0.35rem;
 }
 
 .snapshot-tags {
@@ -295,11 +301,11 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .editorial-list {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.035);
     border: 1px solid var(--line);
-    border-radius: 18px;
-    padding: 0.75rem 0.8rem;
-    margin-bottom: 0.7rem;
+    border-radius: 14px;
+    padding: 0.65rem 0.75rem;
+    margin-bottom: 0.55rem;
 }
 
 .editorial-item {
@@ -324,11 +330,8 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .status-chip {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    padding: 0.85rem 0.9rem;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+    border-radius: 14px;
+    padding: 0.75rem 0.8rem;
 }
 
 .status-chip-label {
@@ -346,12 +349,9 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .stat-card {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px solid var(--line);
     border-radius: var(--radius-lg);
-    padding: 1rem 1.1rem;
-    box-shadow: var(--shadow);
-    min-height: 132px;
+    padding: 0.9rem 1rem;
+    min-height: 112px;
 }
 
 .stat-label {
@@ -364,7 +364,7 @@ p, label, .stCaption, .stMarkdown {
 
 .stat-value {
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
-    font-size: 2rem;
+    font-size: 1.7rem;
     line-height: 1;
     color: var(--ink);
     margin-bottom: 0.45rem;
@@ -377,12 +377,10 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .insight-card {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px solid var(--line);
     border-radius: var(--radius-md);
-    padding: 1rem 1.05rem;
-    min-height: 110px;
-    margin-bottom: 0.7rem;
+    padding: 0.9rem 1rem;
+    min-height: 96px;
+    margin-bottom: 0.55rem;
 }
 
 .insight-title {
@@ -396,7 +394,7 @@ p, label, .stCaption, .stMarkdown {
 .insight-value {
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
     color: var(--ink);
-    font-size: 1.55rem;
+    font-size: 1.28rem;
     margin-bottom: 0.25rem;
 }
 
@@ -420,11 +418,12 @@ p, label, .stCaption, .stMarkdown {
 }
 
 [data-testid="stTabs"] [role="tab"] {
-    height: 44px;
-    padding: 0 1rem;
+    height: 40px;
+    padding: 0 0.9rem;
     border-radius: 999px;
     color: var(--muted);
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    font-size: 0.9rem;
 }
 
 [data-testid="stTabs"] [aria-selected="true"] {
@@ -434,11 +433,8 @@ p, label, .stCaption, .stMarkdown {
 }
 
 [data-testid="stMetric"] {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 0.95rem 1rem;
-    box-shadow: var(--shadow);
 }
 
 [data-testid="stMetricLabel"] {
@@ -474,12 +470,11 @@ p, label, .stCaption, .stMarkdown {
     border: 1px solid rgba(126, 133, 255, 0.22);
 }
 
-[data-testid="stDataFrame"], [data-testid="stPlotlyChart"], [data-testid="stChatMessage"] {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px solid var(--line);
+[data-testid="stDataFrame"],
+[data-testid="stPlotlyChart"],
+[data-testid="stChatMessage"] {
     border-radius: var(--radius-md);
     padding: 0.35rem;
-    box-shadow: var(--shadow);
 }
 
 [data-testid="stAlert"] {
@@ -488,8 +483,6 @@ p, label, .stCaption, .stMarkdown {
 }
 
 [data-testid="stFileUploader"] {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
-    border: 1px dashed rgba(246, 207, 135, 0.24);
     border-radius: 24px;
     padding: 0.35rem;
 }
@@ -504,6 +497,75 @@ p, label, .stCaption, .stMarkdown {
 [data-testid="stExpander"] {
     border-radius: 18px;
     overflow: hidden;
+}
+
+[data-testid="stSidebar"] {
+    background: #0f172d;
+    border-right: 1px solid var(--line);
+}
+
+[data-testid="stSidebar"] .block-container {
+    padding-top: 1rem;
+}
+
+.sidebar-brand {
+    margin-bottom: 1rem;
+}
+
+.sidebar-kicker {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+}
+
+.sidebar-title {
+    color: var(--ink);
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+.sidebar-copy {
+    color: var(--muted);
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.sidebar-section {
+    margin: 1rem 0 0.5rem 0;
+    color: var(--accent-deep);
+    font-size: 0.76rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.sidebar-card {
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 0.8rem;
+    margin-top: 0.6rem;
+}
+
+.sidebar-card strong {
+    color: var(--ink);
+}
+
+.sidebar-card p {
+    margin: 0.2rem 0 0 0;
+    font-size: 0.84rem;
+}
+
+[data-testid="stRadio"] label p,
+[data-testid="stSelectbox"] label p,
+[data-testid="stTextInput"] label p,
+[data-testid="stTextArea"] label p,
+[data-testid="stDateInput"] label p {
+    color: var(--muted);
 }
 
 @media (max-width: 900px) {
@@ -560,25 +622,65 @@ def render_hero() -> None:
         <div class="hero-shell">
             <div class="masthead-grid">
                 <div>
-                    <div class="hero-kicker">Project A.R.I.A. • Private Strategy Studio</div>
+                    <div class="hero-kicker">Project A.R.I.A. | Private Strategy Studio</div>
                     <div class="hero-title"><span class="hero-signature">Ralskies</span> Control Room</div>
                     <div class="hero-copy">
-                        A cinematic planning deck for theatrical covers, genderbent arrangements, dreamy originals,
-                        and fan-requested releases. Designed to feel like the artist portfolio, but rebuilt as a private
-                        operating system where A.R.I.A. can guide the next upload, the next Short, and the next era.
+                        A cleaner local workspace for analytics, song planning, shorts, and AI coaching.
+                        Built to help Ralskies decide what to record next, what to finish first, and what deserves a stronger release push.
                     </div>
-                    <div class="hero-note">Offline-first workflow • BandLab-native production • Built for the Fanskies era</div>
+                    <div class="hero-note">Offline-first workflow | BandLab-native production | Built for the Fanskies era</div>
                 </div>
                 <div class="masthead-meta">
-                    <div class="masthead-pill">A.R.I.A. retention intelligence online</div>
-                    <div class="masthead-pill">Repertoire, shorts, and analytics in one room</div>
-                    <div class="masthead-pill">Theatrical cover strategy with zero cloud dependency</div>
+                    <div class="masthead-pill">Analytics and coaching</div>
+                    <div class="masthead-pill">Repertoire and release planning</div>
+                    <div class="masthead-pill">Local model, zero cloud dependency</div>
                 </div>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_sidebar() -> str:
+    with st.sidebar:
+        st.markdown(
+            """
+            <div class="sidebar-brand">
+                <div class="sidebar-kicker">Ralskies Studio OS</div>
+                <div class="sidebar-title">A.R.I.A.</div>
+                <div class="sidebar-copy">
+                    A quieter control room for planning releases, reading signals, and guiding the next upload.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown('<div class="sidebar-section">Navigation</div>', unsafe_allow_html=True)
+        selected_view = st.radio(
+            "Navigation",
+            options=["Command Center", "Niche Lab", "Repertoire", "Shorts Architect", "The Vault"],
+            label_visibility="collapsed",
+        )
+
+        st.markdown('<div class="sidebar-section">System</div>', unsafe_allow_html=True)
+        vault = st.session_state.vault_settings
+        st.markdown(
+            f"""
+            <div class="sidebar-card">
+                <strong>Model</strong>
+                <p>{vault.get("ollama_model", "Not set")}</p>
+            </div>
+            <div class="sidebar-card">
+                <strong>Data Source</strong>
+                <p>{st.session_state.analytics_source}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    return selected_view
 
 
 def render_section_header(chip: str, title: str, copy: str) -> None:
@@ -1613,20 +1715,17 @@ def main() -> None:
     initialize_state()
     inject_theme()
     render_hero()
+    selected_view = render_sidebar()
 
-    command_center, niche_lab, repertoire, shorts_architect, vault = st.tabs(
-        ["Command Center", "Niche Lab", "Repertoire", "Shorts Architect", "The Vault"]
-    )
-
-    with command_center:
+    if selected_view == "Command Center":
         render_command_center()
-    with niche_lab:
+    elif selected_view == "Niche Lab":
         render_niche_lab()
-    with repertoire:
+    elif selected_view == "Repertoire":
         render_content_calendar()
-    with shorts_architect:
+    elif selected_view == "Shorts Architect":
         render_shorts_architect()
-    with vault:
+    else:
         render_vault()
 
 
