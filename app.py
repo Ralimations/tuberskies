@@ -10,10 +10,16 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from mock_data import generate_analytics_data, summarize_channel
 from shorts_architect import SHORTS_OUTPUT_DIR, analyze_video_pipeline, render_shorts, save_uploaded_file
 from storage import PRIORITIES, STAGES, load_calendar, load_vault_settings, save_calendar, save_vault_settings
-from youtube_client import get_connection_status, load_live_analytics_placeholder
+from youtube_client import (
+    authorize_youtube_analytics,
+    clear_youtube_token,
+    get_live_channel_profile,
+    get_connection_status,
+    has_saved_token,
+    load_live_analytics,
+)
 
 
 st.set_page_config(layout="wide", page_title="Ralskies | Starlight Studio")
@@ -582,10 +588,8 @@ p, label, .stCaption, .stMarkdown {
 
 
 def initialize_state() -> None:
-    if "analytics_df" not in st.session_state:
-        st.session_state.analytics_df = generate_analytics_data()
     if "analytics_source" not in st.session_state:
-        st.session_state.analytics_source = "Mock Data"
+        st.session_state.analytics_source = "Live YouTube"
     if "calendar_df" not in st.session_state:
         st.session_state.calendar_df = load_calendar()
     if "vault_settings" not in st.session_state:
@@ -610,6 +614,8 @@ def initialize_state() -> None:
         st.session_state.shorts_outputs = []
     if "shorts_analysis_error" not in st.session_state:
         st.session_state.shorts_analysis_error = ""
+    if "youtube_auth_notice" not in st.session_state:
+        st.session_state.youtube_auth_notice = ""
 
 
 def inject_theme() -> None:
@@ -644,6 +650,11 @@ def render_hero() -> None:
 
 def render_sidebar() -> str:
     with st.sidebar:
+        channel_profile = None
+        channel_message = ""
+        if has_saved_token():
+            channel_profile, channel_message = get_live_channel_profile(st.session_state.vault_settings)
+
         st.markdown(
             """
             <div class="sidebar-brand">
@@ -656,6 +667,22 @@ def render_sidebar() -> str:
             """,
             unsafe_allow_html=True,
         )
+
+        if channel_profile:
+            if channel_profile.get("thumbnail_url"):
+                st.image(channel_profile["thumbnail_url"], width=72)
+            st.markdown(
+                f"""
+                <div class="sidebar-card">
+                    <strong>{channel_profile.get("title", "Connected Channel")}</strong>
+                    <p>{channel_profile.get("handle", "Authorized YouTube profile")}</p>
+                    <p>{int(channel_profile.get("subscriber_count", "0")):,} subscribers • {int(channel_profile.get("video_count", "0")):,} videos</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        elif channel_message:
+            st.caption(channel_message)
 
         st.markdown('<div class="sidebar-section">Navigation</div>', unsafe_allow_html=True)
         selected_view = st.radio(
@@ -674,7 +701,7 @@ def render_sidebar() -> str:
             </div>
             <div class="sidebar-card">
                 <strong>Data Source</strong>
-                <p>{st.session_state.analytics_source}</p>
+                <p>Live YouTube</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -739,14 +766,27 @@ def stream_ollama_response(prompt: str, model: str) -> Iterable[str]:
 
 
 def build_metric_row(df: pd.DataFrame) -> None:
-    snapshot = summarize_channel(df)
+    if df.empty:
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            render_stat_card("Views | Last 30 Days", "--", "Waiting for live YouTube data")
+        with col2:
+            render_stat_card("Subscribers | Last 30 Days", "--", "Waiting for live YouTube data")
+        with col3:
+            render_stat_card("Watch Time | Last 30 Days", "--", "Waiting for live YouTube data")
+        return
+
+    last_30 = df.tail(30)
+    views = int(last_30["views"].fillna(0).sum())
+    subscribers = int(last_30["subscribers_gained"].fillna(0).sum())
+    watch_time_hours = int(round(last_30["watch_time_hours"].fillna(0).sum()))
     col1, col2, col3 = st.columns(3)
     with col1:
-        render_stat_card("Views | Last 30 Days", f"{snapshot.views:,}", "Fanskies discovery is trending upward")
+        render_stat_card("Views | Last 30 Days", f"{views:,}", "Rolling total from live channel analytics")
     with col2:
-        render_stat_card("Subscribers | Last 30 Days", f"{snapshot.subscribers:,}", "New listeners are converting into community")
+        render_stat_card("Subscribers | Last 30 Days", f"{subscribers:,}", "Subscribers gained across the last 30 days")
     with col3:
-        render_stat_card("Watch Time | Last 30 Days", f"{snapshot.watch_time_hours:,}", "Emotional performance depth remains the biggest lever")
+        render_stat_card("Watch Time | Last 30 Days", f"{watch_time_hours:,}", "Estimated watch time hours from live analytics")
 
 
 def build_health_snapshot(df: pd.DataFrame) -> None:
@@ -755,22 +795,35 @@ def build_health_snapshot(df: pd.DataFrame) -> None:
     if latest.empty or previous.empty:
         return
 
-    ctr_delta = latest["ctr"].mean() - previous["ctr"].mean()
+    has_ctr = df["ctr"].notna().any()
+    ctr_delta = latest["ctr"].mean() - previous["ctr"].mean() if has_ctr else None
     retention_delta = latest["retention"].mean() - previous["retention"].mean()
     views_delta = latest["views"].sum() - previous["views"].sum()
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        render_insight_card("CTR Momentum", f"{latest['ctr'].mean():.2f}%", f"{ctr_delta:+.2f} pts versus the previous 7-day window.")
+        if has_ctr:
+            render_insight_card("CTR Momentum", f"{latest['ctr'].mean():.2f}%", f"{ctr_delta:+.2f} pts versus the previous 7-day window.")
+        else:
+            render_insight_card("CTR Momentum", "Unavailable", "CTR is not returned by the current live YouTube Analytics query.")
     with col2:
         render_insight_card("Retention Momentum", f"{latest['retention'].mean():.2f}%", f"{retention_delta:+.2f} pts versus the previous 7-day window.")
     with col3:
         render_insight_card("Views Momentum", f"{latest['views'].sum():,}", f"{views_delta:+,} views compared with the previous 7 days.")
 
 def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
+    if df.empty or metric_name not in df.columns:
+        st.info("No live analytics are available for this chart yet.")
+        return
+
+    chart_df = df.dropna(subset=[metric_name]).copy()
+    if chart_df.empty:
+        st.info(f"{metric_name.upper() if metric_name == 'ctr' else metric_name.title()} is not available from the current live analytics query.")
+        return
+
     labels = {"ctr": "CTR (%)", "retention": "Retention (%)", "views": "Views"}
     chart = px.line(
-        df,
+        chart_df,
         x="date",
         y=metric_name,
         markers=True,
@@ -794,7 +847,9 @@ def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
 
 
 def get_alert_rows(df: pd.DataFrame) -> pd.DataFrame:
-    return df[(df["ctr"] < 5.0) | (df["retention"] < 42.0)].sort_values("date", ascending=False)
+    ctr_alert = df["ctr"] < 5.0 if "ctr" in df.columns and df["ctr"].notna().any() else pd.Series(False, index=df.index)
+    retention_alert = df["retention"] < 42.0 if "retention" in df.columns else pd.Series(False, index=df.index)
+    return df[ctr_alert | retention_alert].sort_values("date", ascending=False)
 
 
 def build_coach_prompt(topic: str, working_title: str, action: str) -> str:
@@ -1027,27 +1082,49 @@ def render_command_center() -> None:
         "Track discovery, retention, and audience response for theatrical covers, reimagined performances, and original releases.",
     )
 
-    source = st.segmented_control(
-        "Data source",
-        options=["Mock Data", "Live YouTube"],
-        default=st.session_state.analytics_source,
-        key="analytics_source_picker",
+    live_df, live_message = load_live_analytics(st.session_state.vault_settings)
+    live_profile, live_profile_message = get_live_channel_profile(st.session_state.vault_settings) if has_saved_token() else (None, "")
+    st.session_state.analytics_source = "Live YouTube"
+    analytics_df = live_df if live_df is not None else pd.DataFrame(
+        columns=["date", "views", "ctr", "retention", "watch_time_hours", "subscribers_gained"]
     )
-    st.session_state.analytics_source = source
 
-    live_df, live_message = load_live_analytics_placeholder(st.session_state.vault_settings)
-    using_live = source == "Live YouTube" and live_df is not None
-    analytics_df = live_df if using_live else st.session_state.analytics_df
+    auth_col1, auth_col2 = st.columns([1, 1.6])
+    auth_button_label = "Reconnect YouTube" if has_saved_token() else "Connect YouTube Analytics"
+    if auth_col1.button(auth_button_label, key="command_center_auth"):
+        try:
+            st.session_state.youtube_auth_notice = authorize_youtube_analytics(st.session_state.vault_settings)
+        except Exception as error:
+            st.session_state.youtube_auth_notice = f"YouTube authorization failed: {error}"
+    if st.session_state.youtube_auth_notice:
+        auth_col2.info(st.session_state.youtube_auth_notice)
 
-    if source == "Live YouTube" and live_df is None:
-        st.info(live_message)
+    if live_df is None:
+        st.error(live_message)
+        return
+
+    st.success(live_message)
+    if live_profile:
+        render_status_strip(
+            [
+                ("Connected Channel", live_profile.get("title", "YouTube Channel")),
+                ("Subscribers", f"{int(live_profile.get('subscriber_count', '0')):,}"),
+                ("Videos", f"{int(live_profile.get('video_count', '0')):,}"),
+            ]
+        )
+    elif live_profile_message:
+        st.caption(live_profile_message)
 
     build_metric_row(analytics_df)
     build_health_snapshot(analytics_df)
 
+    metric_options = ["views", "retention"]
+    if analytics_df["ctr"].notna().any():
+        metric_options.insert(0, "ctr")
+
     selected_metric = st.radio(
         "Chart focus",
-        options=["ctr", "retention", "views"],
+        options=metric_options,
         format_func=lambda value: value.upper() if value == "ctr" else value.title(),
         horizontal=True,
     )
@@ -1072,7 +1149,7 @@ def render_command_center() -> None:
 
         alerts = get_alert_rows(analytics_df).head(5)
         if alerts.empty:
-            st.success("No major mock-data alerts right now.")
+            st.success("No major live-data alerts right now.")
         else:
             st.warning("Potential weak spots detected in recent performance.")
             alert_rows = []
@@ -1080,7 +1157,11 @@ def render_command_center() -> None:
                 alert_rows.append(
                     (
                         row["date"].strftime("%Y-%m-%d"),
-                        f'CTR {row["ctr"]:.2f}% | Retention {row["retention"]:.2f}%',
+                        (
+                            f'CTR {row["ctr"]:.2f}% | Retention {row["retention"]:.2f}%'
+                            if pd.notna(row["ctr"])
+                            else f'Retention {row["retention"]:.2f}%'
+                        ),
                     )
                 )
             render_editorial_list("Recent Alert Days", alert_rows)
@@ -1655,6 +1736,7 @@ def render_vault() -> None:
     )
     vault = st.session_state.vault_settings
     connection = get_connection_status(vault)
+    token_ready = has_saved_token()
 
     left, right = st.columns([1.35, 0.85])
     with left:
@@ -1680,6 +1762,14 @@ def render_vault() -> None:
             if vault.get("ollama_model", "gemma") in ["gemma", "gemma:7b", "llama3:8b", "gemma4:e2b"]
             else 0,
         )
+        render_editorial_list(
+            "YouTube Auth State",
+            [
+                ("API Key", "Present" if vault.get("youtube_api_key", "").strip() else "Missing"),
+                ("OAuth Client", "Present" if vault.get("youtube_client_id", "").strip() and vault.get("youtube_client_secret", "").strip() else "Missing"),
+                ("Saved Token", "Present" if token_ready else "Missing"),
+            ],
+        )
 
     with right:
         render_panel_header(
@@ -1693,10 +1783,22 @@ def render_vault() -> None:
             "Setup Notes",
             [
                 ("Privacy", "Local-first by default"),
-                ("Live Data", "Optional until API keys are added"),
+                ("Live Data", "Now supports local OAuth and YouTube Analytics pulls"),
                 ("Model Runtime", "Depends on your local Ollama install"),
             ],
         )
+        auth_col1, auth_col2 = st.columns(2)
+        if auth_col1.button("Authorize YouTube", use_container_width=True):
+            try:
+                st.session_state.youtube_auth_notice = authorize_youtube_analytics(vault)
+            except Exception as error:
+                st.session_state.youtube_auth_notice = f"YouTube authorization failed: {error}"
+        if auth_col2.button("Clear Local Token", use_container_width=True):
+            clear_youtube_token()
+            st.session_state.youtube_auth_notice = "The saved local YouTube token was removed."
+
+        if st.session_state.youtube_auth_notice:
+            st.info(st.session_state.youtube_auth_notice)
 
     if st.button("Save Vault Settings"):
         updated = {

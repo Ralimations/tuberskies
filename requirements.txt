@@ -3,6 +3,9 @@ pandas
 plotly
 ollama
 google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
 python-dotenv
 librosa
 pydub
