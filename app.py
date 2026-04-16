@@ -10,6 +10,7 @@ import streamlit as st
 
 from mock_data import generate_analytics_data, summarize_channel
 from storage import STAGES, load_calendar, load_vault_settings, save_calendar, save_vault_settings
+from youtube_client import get_connection_status, load_live_analytics_placeholder
 
 
 st.set_page_config(layout="wide", page_title="YT Coach")
@@ -18,6 +19,8 @@ st.set_page_config(layout="wide", page_title="YT Coach")
 def initialize_state() -> None:
     if "analytics_df" not in st.session_state:
         st.session_state.analytics_df = generate_analytics_data()
+    if "analytics_source" not in st.session_state:
+        st.session_state.analytics_source = "Mock Data"
     if "calendar_df" not in st.session_state:
         st.session_state.calendar_df = load_calendar()
     if "vault_settings" not in st.session_state:
@@ -73,8 +76,23 @@ def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
 
 def render_command_center() -> None:
     st.subheader("Command Center")
-    st.caption("Offline mock analytics with AI-ready chart context.")
-    analytics_df = st.session_state.analytics_df
+    st.caption("Offline-first analytics with a live YouTube connection path ready when you want it.")
+
+    source = st.segmented_control(
+        "Data source",
+        options=["Mock Data", "Live YouTube"],
+        default=st.session_state.analytics_source,
+        key="analytics_source_picker",
+    )
+    st.session_state.analytics_source = source
+
+    live_df, live_message = load_live_analytics_placeholder(st.session_state.vault_settings)
+    using_live = source == "Live YouTube" and live_df is not None
+    analytics_df = live_df if using_live else st.session_state.analytics_df
+
+    if source == "Live YouTube" and live_df is None:
+        st.info(live_message)
+
     build_metric_row(analytics_df)
 
     selected_metric = st.radio(
@@ -182,6 +200,12 @@ def render_vault() -> None:
     st.subheader("The Vault")
     st.caption("Local defaults and credentials storage for this machine only.")
     vault = st.session_state.vault_settings
+    connection = get_connection_status(vault)
+
+    if connection.connected:
+        st.success(connection.message)
+    else:
+        st.info(connection.message)
 
     default_description = st.text_area(
         "Default Description",
@@ -193,16 +217,19 @@ def render_vault() -> None:
         "YouTube API Key",
         value=vault.get("youtube_api_key", ""),
         type="password",
+        placeholder="Leave blank for now",
     )
     youtube_client_id = st.text_input(
         "YouTube Client ID",
         value=vault.get("youtube_client_id", ""),
         type="password",
+        placeholder="Leave blank for now",
     )
     youtube_client_secret = st.text_input(
         "YouTube Client Secret",
         value=vault.get("youtube_client_secret", ""),
         type="password",
+        placeholder="Leave blank for now",
     )
     ollama_model = st.selectbox(
         "Local LLM Model",
