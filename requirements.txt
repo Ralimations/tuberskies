@@ -4,3 +4,9 @@ plotly
 ollama
 google-api-python-client
 python-dotenv
+librosa
+pydub
+faster-whisper
+moviepy
+ffmpeg-python
+torch

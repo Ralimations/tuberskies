@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import textwrap
 from datetime import date
+from pathlib import Path
 from typing import Iterable
 
 import ollama
@@ -10,6 +11,7 @@ import plotly.express as px
 import streamlit as st
 
 from mock_data import generate_analytics_data, summarize_channel
+from shorts_architect import SHORTS_OUTPUT_DIR, analyze_video_pipeline, render_shorts, save_uploaded_file
 from storage import PRIORITIES, STAGES, load_calendar, load_vault_settings, save_calendar, save_vault_settings
 from youtube_client import get_connection_status, load_live_analytics_placeholder
 
@@ -30,34 +32,28 @@ ARIA_SYSTEM_PROMPT = (
 APP_CSS = """
 <style>
 :root {
-    --bg: #0a0f1d;
-    --surface: rgba(26, 34, 53, 0.84);
-    --surface-strong: #1a2235;
-    --ink: #edf2ff;
-    --muted: #93a0bf;
-    --line: rgba(237, 242, 255, 0.11);
-    --accent: #ffd700;
-    --accent-deep: #ffb347;
-    --accent-soft: rgba(255, 215, 0, 0.12);
-    --sky: #4db8ff;
-    --shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+    --bg: #0b1020;
+    --surface: #141b33;
+    --surface-soft: #1a2342;
+    --ink: #eef2ff;
+    --muted: #b4bfdc;
+    --line: rgba(255, 255, 255, 0.08);
+    --accent: #e7b45d;
+    --accent-deep: #f3d08c;
+    --sky: #6a8cff;
+    --shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
     --radius-lg: 24px;
     --radius-md: 18px;
 }
 
 .stApp {
-    background:
-        radial-gradient(circle at 15% 20%, rgba(77, 184, 255, 0.14), transparent 24%),
-        radial-gradient(circle at 85% 12%, rgba(255, 215, 0, 0.12), transparent 22%),
-        radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.05), transparent 18%),
-        linear-gradient(180deg, #0a0f1d 0%, #10182a 45%, #0d1322 100%);
+    background: linear-gradient(180deg, #0b1020 0%, #101936 52%, #0d1530 100%);
     color: var(--ink);
-    font-family: "Inter", "Segoe UI", "Trebuchet MS", sans-serif;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
 
 [data-testid="stHeader"] {
     background: transparent;
-    height: 0;
 }
 
 [data-testid="stToolbar"] {
@@ -81,14 +77,16 @@ APP_CSS = """
 }
 
 .block-container {
-    padding-top: 0.4rem;
+    padding-top: 0.75rem;
     padding-bottom: 2rem;
+    max-width: 1460px;
+    margin: 0 auto;
 }
 
 h1, h2, h3 {
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif !important;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif !important;
     color: var(--ink);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
 }
 
 p, label, .stCaption, .stMarkdown {
@@ -96,95 +94,263 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .hero-shell {
-    background:
-        radial-gradient(circle at top right, rgba(255, 215, 0, 0.12), transparent 26%),
-        linear-gradient(135deg, rgba(26, 34, 53, 0.95), rgba(14, 22, 39, 0.96));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 30px;
-    padding: 1.4rem 1.55rem;
+    background: linear-gradient(135deg, #151d39 0%, #10172d 100%);
+    border: 1px solid var(--line);
+    border-radius: 26px;
+    padding: 1.35rem 1.4rem;
     box-shadow: var(--shadow);
     margin-bottom: 1rem;
-    position: relative;
-    overflow: hidden;
-}
-
-.hero-shell::before {
-    content: "";
-    position: absolute;
-    inset: 12px 14px auto auto;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.9);
-    box-shadow:
-        -70px 18px 0 0 rgba(255, 215, 0, 0.7),
-        -150px 42px 0 0 rgba(255, 255, 255, 0.55),
-        -210px 8px 0 0 rgba(77, 184, 255, 0.65),
-        -280px 26px 0 0 rgba(255, 255, 255, 0.4);
-}
-
-.hero-shell::after {
-    content: "";
-    position: absolute;
-    inset: auto -40px -60px auto;
-    width: 220px;
-    height: 220px;
-    background: radial-gradient(circle, rgba(255, 215, 0, 0.24), transparent 68%);
 }
 
 .hero-kicker {
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.16em;
-    color: var(--accent);
+    color: var(--accent-deep);
     font-weight: 700;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.65rem;
 }
 
 .hero-title {
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif;
-    font-size: 2.55rem;
-    line-height: 1.02;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    font-size: clamp(2.2rem, 4vw, 3.6rem);
+    line-height: 0.98;
     color: var(--ink);
-    margin: 0 0 0.42rem 0;
+    max-width: 11ch;
+    margin: 0 0 0.6rem 0;
+}
+
+.hero-signature {
+    display: inline-block;
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+    color: var(--accent-deep);
+    margin-right: 0.3rem;
 }
 
 .hero-copy {
-    max-width: 800px;
+    max-width: 62ch;
     font-size: 1rem;
     color: var(--muted);
-    line-height: 1.65;
+    line-height: 1.7;
+}
+
+.hero-note {
+    margin-top: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.58rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(246, 207, 135, 0.18);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    font-size: 0.84rem;
 }
 
 .section-chip {
     display: inline-block;
     padding: 0.35rem 0.72rem;
     background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--line);
     border-radius: 999px;
     font-size: 0.78rem;
-    color: var(--muted);
+    color: var(--accent-deep);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     margin-bottom: 0.6rem;
 }
 
 .section-title {
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif;
-    font-size: 1.72rem;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    font-size: clamp(1.9rem, 2.4vw, 2.8rem);
     color: var(--ink);
     margin: 0 0 0.25rem 0;
 }
 
 .section-copy {
     color: var(--muted);
-    margin-bottom: 0.8rem;
+    margin-bottom: 0.75rem;
+    max-width: 64ch;
+}
+
+.panel-shell {
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 1rem 1.05rem 0.85rem 1.05rem;
+    box-shadow: var(--shadow);
+    margin-bottom: 1rem;
+}
+
+.panel-title {
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    color: var(--ink);
+    font-size: 1.12rem;
+    margin-bottom: 0.2rem;
+}
+
+.panel-copy {
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin-bottom: 0.75rem;
+}
+
+.masthead-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.8fr);
+    gap: 1rem;
+    align-items: center;
+}
+
+.masthead-meta {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.masthead-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.82rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line);
+    color: var(--accent-deep);
+    font-size: 0.8rem;
+    width: fit-content;
+}
+
+.board-lane {
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 0.85rem;
+    min-height: 220px;
+    box-shadow: var(--shadow);
+}
+
+.board-lane-title {
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    color: var(--ink);
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+}
+
+.song-card {
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 0.7rem 0.75rem;
+    margin-bottom: 0.65rem;
+}
+
+.song-card-title {
+    color: var(--ink);
+    font-weight: 600;
+    margin-bottom: 0.28rem;
+}
+
+.song-card-meta {
+    color: var(--muted);
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.snapshot-card {
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.snapshot-title {
+    color: var(--ink);
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    font-size: 1.2rem;
+    margin-bottom: 0.45rem;
+}
+
+.snapshot-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-bottom: 0.7rem;
+}
+
+.snapshot-tag {
+    padding: 0.3rem 0.58rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    color: var(--accent-deep);
+    font-size: 0.78rem;
+}
+
+.snapshot-notes {
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.7;
+}
+
+.editorial-list {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 0.75rem 0.8rem;
+    margin-bottom: 0.7rem;
+}
+
+.editorial-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.8rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 0.28rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.editorial-item:last-child {
+    border-bottom: none;
+}
+
+.status-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.7rem;
+    margin-bottom: 0.9rem;
+}
+
+.status-chip {
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 0.85rem 0.9rem;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+}
+
+.status-chip-label {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-bottom: 0.35rem;
+}
+
+.status-chip-value {
+    color: var(--ink);
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    font-size: 1rem;
 }
 
 .stat-card {
-    background: linear-gradient(180deg, rgba(30, 40, 63, 0.94), rgba(17, 25, 43, 0.88));
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     padding: 1rem 1.1rem;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+    box-shadow: var(--shadow);
     min-height: 132px;
 }
 
@@ -197,7 +363,7 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .stat-value {
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
     font-size: 2rem;
     line-height: 1;
     color: var(--ink);
@@ -211,8 +377,8 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .insight-card {
-    background: rgba(26, 34, 53, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 1rem 1.05rem;
     min-height: 110px;
@@ -228,7 +394,7 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .insight-value {
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
     color: var(--ink);
     font-size: 1.55rem;
     margin-bottom: 0.25rem;
@@ -242,11 +408,15 @@ p, label, .stCaption, .stMarkdown {
 [data-testid="stTabs"] [role="tablist"] {
     gap: 0.55rem;
     padding: 0.25rem;
-    background: rgba(26, 34, 53, 0.68);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #121a32;
+    border: 1px solid var(--line);
     border-radius: 999px;
     width: fit-content;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.2);
+}
+
+[data-testid="stTabs"] > div[data-baseweb="tab-list"] {
+    gap: 0.55rem;
 }
 
 [data-testid="stTabs"] [role="tab"] {
@@ -254,20 +424,21 @@ p, label, .stCaption, .stMarkdown {
     padding: 0 1rem;
     border-radius: 999px;
     color: var(--muted);
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
 
 [data-testid="stTabs"] [aria-selected="true"] {
     background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-    color: #111827 !important;
+    color: #241507 !important;
+    box-shadow: 0 10px 28px rgba(233, 176, 79, 0.26);
 }
 
 [data-testid="stMetric"] {
-    background: rgba(26, 34, 53, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 0.95rem 1rem;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow);
 }
 
 [data-testid="stMetricLabel"] {
@@ -275,43 +446,74 @@ p, label, .stCaption, .stMarkdown {
 }
 
 [data-testid="stMetricValue"] {
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
 
 .stButton > button {
     border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: linear-gradient(135deg, rgba(26, 34, 53, 0.96), rgba(20, 28, 48, 0.92));
+    border: 1px solid rgba(233, 176, 79, 0.16);
+    background: #17203d;
     color: var(--ink);
-    font-family: "Montserrat", "Bahnschrift", "Arial Narrow", sans-serif;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
     font-weight: 600;
     min-height: 42px;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
 }
 
 .stButton > button[kind="primary"] {
     background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-    color: #111827;
+    color: #241507;
     border-color: rgba(0, 0, 0, 0);
+    box-shadow: 0 10px 28px rgba(233, 176, 79, 0.26);
 }
 
 .stTextInput input, .stTextArea textarea, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div {
-    background: rgba(26, 34, 53, 0.78);
+    background: #0f1630;
     border-radius: 16px;
     color: var(--ink);
+    border: 1px solid rgba(126, 133, 255, 0.22);
 }
 
 [data-testid="stDataFrame"], [data-testid="stPlotlyChart"], [data-testid="stChatMessage"] {
-    background: rgba(26, 34, 53, 0.72);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px solid var(--line);
     border-radius: var(--radius-md);
     padding: 0.35rem;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+    box-shadow: var(--shadow);
 }
 
 [data-testid="stAlert"] {
     border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--line);
+}
+
+[data-testid="stFileUploader"] {
+    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    border: 1px dashed rgba(246, 207, 135, 0.24);
+    border-radius: 24px;
+    padding: 0.35rem;
+}
+
+[data-testid="stRadio"] > div {
+    background: rgba(16, 18, 50, 0.52);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 0.5rem 0.7rem;
+}
+
+[data-testid="stExpander"] {
+    border-radius: 18px;
+    overflow: hidden;
+}
+
+@media (max-width: 900px) {
+    .masthead-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-title {
+        max-width: 100%;
+    }
 }
 </style>
 """
@@ -334,6 +536,18 @@ def initialize_state() -> None:
         st.session_state.calendar_coach_output = ""
     if "calendar_coach_context" not in st.session_state:
         st.session_state.calendar_coach_context = "No repertoire coaching run yet."
+    if "transcription_data" not in st.session_state:
+        st.session_state.transcription_data = None
+    if "shorts_segments" not in st.session_state:
+        st.session_state.shorts_segments = []
+    if "shorts_main_video_path" not in st.session_state:
+        st.session_state.shorts_main_video_path = ""
+    if "shorts_broll_video_path" not in st.session_state:
+        st.session_state.shorts_broll_video_path = ""
+    if "shorts_outputs" not in st.session_state:
+        st.session_state.shorts_outputs = []
+    if "shorts_analysis_error" not in st.session_state:
+        st.session_state.shorts_analysis_error = ""
 
 
 def inject_theme() -> None:
@@ -344,11 +558,22 @@ def render_hero() -> None:
     st.markdown(
         """
         <div class="hero-shell">
-            <div class="hero-kicker">Starlight Studio</div>
-            <div class="hero-title">Ralskies Control Room</div>
-            <div class="hero-copy">
-                A private night-sky studio for theatrical covers, reimagined arrangements, dreamy originals,
-                and Fanskies-focused planning. Built to protect a DIY BandLab workflow while A.R.I.A. helps shape the next release.
+            <div class="masthead-grid">
+                <div>
+                    <div class="hero-kicker">Project A.R.I.A. • Private Strategy Studio</div>
+                    <div class="hero-title"><span class="hero-signature">Ralskies</span> Control Room</div>
+                    <div class="hero-copy">
+                        A cinematic planning deck for theatrical covers, genderbent arrangements, dreamy originals,
+                        and fan-requested releases. Designed to feel like the artist portfolio, but rebuilt as a private
+                        operating system where A.R.I.A. can guide the next upload, the next Short, and the next era.
+                    </div>
+                    <div class="hero-note">Offline-first workflow • BandLab-native production • Built for the Fanskies era</div>
+                </div>
+                <div class="masthead-meta">
+                    <div class="masthead-pill">A.R.I.A. retention intelligence online</div>
+                    <div class="masthead-pill">Repertoire, shorts, and analytics in one room</div>
+                    <div class="masthead-pill">Theatrical cover strategy with zero cloud dependency</div>
+                </div>
             </div>
         </div>
         """,
@@ -637,22 +862,7 @@ def render_idea_board(df: pd.DataFrame) -> None:
     left, right = st.columns([1.05, 1])
     with left:
         st.markdown("### Song Snapshot")
-        detail_frame = pd.DataFrame(
-            [
-                {"Field": "Title", "Value": selected_row["title"]},
-                {"Field": "Stage", "Value": selected_row["stage"]},
-                {"Field": "Priority", "Value": selected_row["priority"]},
-                {"Field": "Pillar", "Value": selected_row["content_pillar"] or "Not set"},
-                {
-                    "Field": "Target",
-                    "Value": selected_row["target_upload_date"].strftime("%Y-%m-%d")
-                    if pd.notna(selected_row["target_upload_date"])
-                    else "Unscheduled",
-                },
-                {"Field": "Notes", "Value": selected_row["notes"] or "No notes yet"},
-            ]
-        )
-        st.dataframe(detail_frame, use_container_width=True, hide_index=True)
+        render_song_snapshot(selected_row)
 
         coach_col1, coach_col2 = st.columns(2)
         analyze_idea = coach_col1.button("Coach This Song", use_container_width=True)
@@ -744,15 +954,34 @@ def render_command_center() -> None:
     with left:
         build_analytics_chart(analytics_df, selected_metric)
     with right:
-        st.markdown("### Coaching Context")
-        st.dataframe(analytics_df.tail(10), use_container_width=True, hide_index=True)
+        render_panel_header(
+            "Signal Desk",
+            "A tighter read on what A.R.I.A. should pay attention to before you ask for analysis.",
+        )
+        latest_rows = analytics_df.tail(5).copy()
+        latest_rows["date"] = latest_rows["date"].dt.strftime("%Y-%m-%d")
+        render_editorial_list(
+            "Latest Trend Read",
+            [
+                (row["date"], f'{row[selected_metric]:,.2f}' if selected_metric != "views" else f'{int(row[selected_metric]):,}')
+                for _, row in latest_rows.iterrows()
+            ],
+        )
 
         alerts = get_alert_rows(analytics_df).head(5)
         if alerts.empty:
             st.success("No major mock-data alerts right now.")
         else:
             st.warning("Potential weak spots detected in recent performance.")
-            st.dataframe(alerts[["date", "views", "ctr", "retention"]], use_container_width=True, hide_index=True)
+            alert_rows = []
+            for _, row in alerts.iterrows():
+                alert_rows.append(
+                    (
+                        row["date"].strftime("%Y-%m-%d"),
+                        f'CTR {row["ctr"]:.2f}% | Retention {row["retention"]:.2f}%',
+                    )
+                )
+            render_editorial_list("Recent Alert Days", alert_rows)
 
         if st.button("Analyze with A.R.I.A.", key="command_center_coach"):
             model = st.session_state.vault_settings.get("ollama_model", "gemma")
@@ -770,32 +999,302 @@ def render_command_center() -> None:
             with st.chat_message("assistant"):
                 st.write_stream(stream_ollama_response(prompt, model))
 
+
+def render_panel_header(title: str, copy: str) -> None:
+    st.markdown(
+        f"""
+        <div class="panel-shell">
+            <div class="panel-title">{title}</div>
+            <div class="panel-copy">{copy}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_song_snapshot(selected_row: pd.Series) -> None:
+    target = (
+        selected_row["target_upload_date"].strftime("%Y-%m-%d")
+        if pd.notna(selected_row["target_upload_date"])
+        else "Unscheduled"
+    )
+    pillar = selected_row["content_pillar"] or "Unlabeled"
+    notes = selected_row["notes"] or "No notes yet."
+    st.markdown(
+        f"""
+        <div class="snapshot-card">
+            <div class="snapshot-title">{selected_row["title"]}</div>
+            <div class="snapshot-tags">
+                <div class="snapshot-tag">{selected_row["stage"]}</div>
+                <div class="snapshot-tag">{selected_row["priority"]} priority</div>
+                <div class="snapshot-tag">{pillar}</div>
+                <div class="snapshot-tag">{target}</div>
+            </div>
+            <div class="snapshot-notes">{notes}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_editorial_list(title: str, rows: list[tuple[str, str]]) -> None:
+    items = "".join(
+        f'<div class="editorial-item"><span>{label}</span><span>{value}</span></div>'
+        for label, value in rows
+    )
+    st.markdown(f"**{title}**")
+    st.markdown(f'<div class="editorial-list">{items}</div>', unsafe_allow_html=True)
+
+
+def render_status_strip(items: list[tuple[str, str]]) -> None:
+    html = "".join(
+        f"""
+        <div class="status-chip">
+            <div class="status-chip-label">{label}</div>
+            <div class="status-chip-value">{value}</div>
+        </div>
+        """
+        for label, value in items
+    )
+    st.markdown(f'<div class="status-strip">{html}</div>', unsafe_allow_html=True)
+
+
+def render_repertoire_stage_board(df: pd.DataFrame) -> None:
+    board_cols = st.columns(len(STAGES))
+    for index, stage in enumerate(STAGES):
+        stage_rows = (
+            df[df["stage"] == stage]
+            .sort_values(["priority", "target_upload_date", "title"], ascending=[True, True, True])
+            .head(4)
+        )
+        with board_cols[index]:
+            cards_html = ""
+            if stage_rows.empty:
+                cards_html = '<div class="song-card"><div class="song-card-meta">No songs here yet.</div></div>'
+            else:
+                for _, row in stage_rows.iterrows():
+                    target = (
+                        row["target_upload_date"].strftime("%Y-%m-%d")
+                        if pd.notna(row["target_upload_date"])
+                        else "Unscheduled"
+                    )
+                    pillar = row["content_pillar"] or "Unlabeled"
+                    cards_html += f"""
+                    <div class="song-card">
+                        <div class="song-card-title">{row['title']}</div>
+                        <div class="song-card-meta">{row['priority']} priority</div>
+                        <div class="song-card-meta">{pillar}</div>
+                        <div class="song-card-meta">{target}</div>
+                    </div>
+                    """
+
+            st.markdown(
+                f"""
+                <div class="board-lane">
+                    <div class="board-lane-title">{stage}</div>
+                    {cards_html}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def render_shorts_architect() -> None:
+    render_section_header(
+        "Vertical Video",
+        "The Shorts Architect",
+        "Upload a long-form performance, detect high-energy moments, refine the lyrics, and render vertical Shorts locally.",
+    )
+
+    ingest_tab, cutting_tab, render_tab = st.tabs(["Ingest", "Cutting Room", "Render"])
+
+    with ingest_tab:
+        render_panel_header(
+            "Step 1: Ingestion & Analysis",
+            "Upload the performance master, optionally add B-roll, and let A.R.I.A. find the strongest music moments.",
+        )
+        upload_col, analysis_col = st.columns([1.2, 0.9])
+        with upload_col:
+            main_video = st.file_uploader(
+                "Main Performance Video",
+                type=["mp4", "mov", "mkv", "avi"],
+                key="shorts_main_upload",
+            )
+            broll_video = st.file_uploader(
+                "B-Roll / Reference Video (Optional for Duet Mode)",
+                type=["mp4", "mov", "mkv", "avi"],
+                key="shorts_broll_upload",
+            )
+        with analysis_col:
+            render_status_strip(
+                [
+                    ("Main Video", main_video.name if main_video else "Waiting"),
+                    ("B-Roll", broll_video.name if broll_video else "Optional"),
+                    ("GPU Flow", "Transcribe then clear VRAM"),
+                ]
+            )
+            whisper_model = st.selectbox(
+                "Whisper model for local transcription",
+                options=["tiny", "base", "small", "medium"],
+                index=2,
+                key="shorts_whisper_model",
+            )
+            st.caption("`small` is usually the best balance for a first run. Use `medium` only if you want stronger accuracy and have more headroom.")
+            if st.button("Analyze Audio & Transcribe", type="primary", key="shorts_analyze"):
+                if not main_video:
+                    st.error("Upload a main performance video first.")
+                else:
+                    try:
+                        main_path = save_uploaded_file(main_video, "main_video")
+                        broll_path = save_uploaded_file(broll_video, "broll_video") if broll_video else None
+                        segments, transcription_df = analyze_video_pipeline(main_path, whisper_model=whisper_model)
+                        st.session_state.transcription_data = transcription_df
+                        st.session_state.shorts_segments = segments
+                        st.session_state.shorts_main_video_path = str(main_path)
+                        st.session_state.shorts_broll_video_path = str(broll_path) if broll_path else ""
+                        st.session_state.shorts_outputs = []
+                        st.session_state.shorts_analysis_error = ""
+                        st.success("Audio analysis and transcription finished.")
+                    except Exception as error:
+                        st.session_state.shorts_analysis_error = str(error)
+                        st.error(f"Shorts analysis failed: {error}")
+
+        if st.session_state.shorts_analysis_error:
+            st.warning(st.session_state.shorts_analysis_error)
+        if st.session_state.shorts_segments:
+            segment_df = pd.DataFrame(st.session_state.shorts_segments)
+            avg_duration = (
+                (segment_df["end"] - segment_df["start"]).mean()
+                if {"start", "end"}.issubset(segment_df.columns)
+                else 0
+            )
+            transcript_rows = (
+                len(st.session_state.transcription_data)
+                if st.session_state.transcription_data is not None
+                else 0
+            )
+            stat_col1, stat_col2, stat_col3 = st.columns(3)
+            with stat_col1:
+                render_insight_card("Candidate Moments", f"{len(segment_df):,}", "High-energy sections currently queued for Shorts.")
+            with stat_col2:
+                render_insight_card("Average Length", f"{avg_duration:.1f}s", "Balanced between hook density and replay value.")
+            with stat_col3:
+                render_insight_card("Transcript Lines", f"{transcript_rows:,}", "Editable lyric or caption lines ready for cleanup.")
+            st.markdown("### Detected Viral Windows")
+            st.dataframe(segment_df, use_container_width=True, hide_index=True)
+
+    with cutting_tab:
+        if st.session_state.transcription_data is None or st.session_state.transcription_data.empty:
+            st.info("Analyze a performance video in the Ingest tab to unlock The Cutting Room.")
+        else:
+            render_panel_header(
+                "Step 2: The Cutting Room",
+                "Refine the transcript, choose the caption styling, and set the short layout before rendering.",
+            )
+            cutting_room_col, style_col = st.columns([1.55, 1])
+            display_df = st.session_state.transcription_data[["segment_id", "start_time", "end_time", "text"]].copy()
+            with cutting_room_col:
+                editable_df = st.data_editor(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="fixed",
+                    disabled=["segment_id", "start_time", "end_time"],
+                    column_config={
+                        "segment_id": st.column_config.NumberColumn("Segment", format="%d"),
+                        "start_time": st.column_config.NumberColumn("Start", format="%.2f s"),
+                        "end_time": st.column_config.NumberColumn("End", format="%.2f s"),
+                        "text": st.column_config.TextColumn("Editable Lyrics / Caption Text", width="large"),
+                    },
+                    key="shorts_transcription_editor",
+                )
+            with style_col:
+                st.markdown("### Styling Sidebar")
+                caption_color = st.color_picker("Caption Color", value="#FFD700")
+                font_name = st.selectbox("Font", options=["Montserrat-Bold", "Impact", "Arial-Bold", "Helvetica-Bold"])
+                add_outline = st.checkbox("Add Drop Shadow/Outline", value=True)
+                layout_mode = st.radio("Layout", options=["Solo Mode", "Duet Mode"], horizontal=False)
+                render_editorial_list(
+                    "Current Styling",
+                    [
+                        ("Palette", caption_color),
+                        ("Font", font_name),
+                        ("Outline", "On" if add_outline else "Off"),
+                        ("Layout", layout_mode),
+                    ],
+                )
+                if layout_mode == "Duet Mode" and not st.session_state.shorts_broll_video_path:
+                    st.caption("Duet Mode works best once a B-roll or reference clip has been uploaded in Ingest.")
+
+            st.session_state.shorts_editor_payload = {
+                "editable_df": editable_df,
+                "caption_color": caption_color,
+                "font_name": font_name,
+                "add_outline": add_outline,
+                "layout_mode": layout_mode,
+            }
+
+    with render_tab:
+        if st.session_state.transcription_data is None or st.session_state.transcription_data.empty:
+            st.info("Finish analysis first, then return here to render your Shorts.")
+        else:
+            render_panel_header(
+                "Step 3: The Render Engine",
+                "Approve the edited lines and export 9:16 vertical shorts into your local output folder.",
+            )
+            payload = st.session_state.get("shorts_editor_payload", {})
+            render_status_strip(
+                [
+                    ("Layout", payload.get("layout_mode", "Solo Mode")),
+                    ("Caption Tone", payload.get("caption_color", "#FFD700")),
+                    ("Exports", str(len(st.session_state.shorts_outputs))),
+                ]
+            )
+            render_editorial_list(
+                "Render Preflight",
+                [
+                    ("Transcript Ready", "Yes" if st.session_state.transcription_data is not None else "No"),
+                    ("Main Video", "Loaded" if st.session_state.shorts_main_video_path else "Missing"),
+                    ("B-Roll", "Loaded" if st.session_state.shorts_broll_video_path else "Not attached"),
+                    ("Output Folder", SHORTS_OUTPUT_DIR.name),
+                ],
+            )
+            if st.button("Approve & Render Shorts", type="primary", key="shorts_render"):
+                try:
+                    editable_df = payload.get("editable_df")
+                    render_df = st.session_state.transcription_data.copy()
+                    if editable_df is not None:
+                        render_df["text"] = editable_df["text"].fillna("").astype(str)
+                    main_video_path = Path(st.session_state.shorts_main_video_path)
+                    broll_path = Path(st.session_state.shorts_broll_video_path) if st.session_state.shorts_broll_video_path else None
+                    output_paths = render_shorts(
+                        main_video_path=main_video_path,
+                        broll_video_path=broll_path,
+                        transcript_df=render_df,
+                        layout_mode=payload.get("layout_mode", "Solo Mode"),
+                        text_color=payload.get("caption_color", "#FFD700"),
+                        font_name=payload.get("font_name", "Montserrat-Bold"),
+                        add_outline=payload.get("add_outline", True),
+                    )
+                    st.session_state.transcription_data = render_df
+                    st.session_state.shorts_outputs = [str(path) for path in output_paths]
+                    st.balloons()
+                    st.success(f"Rendered {len(output_paths)} short(s) to {SHORTS_OUTPUT_DIR}.")
+                except Exception as error:
+                    st.error(f"Render failed: {error}")
+
+            if st.session_state.shorts_outputs:
+                st.markdown("### Rendered Shorts")
+                for output in st.session_state.shorts_outputs:
+                    st.video(output)
+                    st.caption(output)
+
 def render_niche_lab() -> None:
     render_section_header(
         "Ideation",
         "Niche Lab",
         "Develop covers, originals, and fan-requested songs into stronger theatrical concepts with A.R.I.A.",
     )
-    topic = st.text_area(
-        "Song concept, niche direction, or cover idea",
-        placeholder="Example: male version of Pretty Little Baby with a softer Broadway ballad treatment",
-        height=140,
-    )
-    fan_request = st.text_area(
-        "Ko-fi / Fanskies request dropbox",
-        placeholder="Paste song requests here, one line or one paragraph at a time...",
-        height=110,
-    )
-    comment_dump = st.text_area(
-        "Comments / request extraction inbox",
-        placeholder="Paste YouTube comments here and A.R.I.A. will try to spot recurring song requests or audience signals...",
-        height=120,
-    )
-
-    col1, col2 = st.columns(2)
-    working_title = col1.text_input("Working title", placeholder="Pretty Little Baby (Male Version)")
-    model = col2.text_input("Local Ollama model", value=st.session_state.vault_settings.get("ollama_model", "gemma"))
-
     action_labels = {
         "title_pack": "Title Pack",
         "hook_pack": "Hook Pack",
@@ -803,13 +1302,83 @@ def render_niche_lab() -> None:
         "content_brief": "Content Brief",
         "fan_request_spin": "Ralskies Spin",
     }
-    selected_action = st.selectbox("Generation mode", options=list(action_labels.keys()), format_func=lambda value: action_labels[value])
 
-    col1, col2, col3 = st.columns([1, 1, 1.2])
-    run_primary = col1.button("Ask A.R.I.A.", type="primary")
-    run_secondary = col2.button("Fan Request Spin")
-    clear_output = col3.button("Clear Output")
-    extract_requests = st.button("Extract Requests From Comments", use_container_width=True)
+    idea_tab, request_tab, output_tab = st.tabs(["Idea Forge", "Request Signals", "Output Desk"])
+
+    topic = ""
+    fan_request = ""
+    comment_dump = ""
+    working_title = ""
+    model = st.session_state.vault_settings.get("ollama_model", "gemma")
+    selected_action = "title_pack"
+    run_primary = False
+    run_secondary = False
+    clear_output = False
+    extract_requests = False
+
+    with idea_tab:
+        render_panel_header(
+            "Concept Builder",
+            "Shape a cover, original, or reimagined concept into stronger packaging and clearer strategic direction.",
+        )
+        topic = st.text_area(
+            "Song concept, niche direction, or cover idea",
+            placeholder="Example: male version of Pretty Little Baby with a softer Broadway ballad treatment",
+            height=140,
+        )
+        col1, col2 = st.columns(2)
+        working_title = col1.text_input("Working title", placeholder="Pretty Little Baby (Male Version)")
+        model = col2.text_input("Local Ollama model", value=st.session_state.vault_settings.get("ollama_model", "gemma"))
+        selected_action = st.selectbox(
+            "Generation mode",
+            options=list(action_labels.keys()),
+            format_func=lambda value: action_labels[value],
+        )
+        col1, col2 = st.columns([1, 1.1])
+        run_primary = col1.button("Ask A.R.I.A.", type="primary")
+        clear_output = col2.button("Clear Output")
+
+    with request_tab:
+        render_panel_header(
+            "Fan Request Signals",
+            "Review Ko-fi requests and pasted comment threads to spot the strongest audience demand.",
+        )
+        fan_request = st.text_area(
+            "Ko-fi / Fanskies request dropbox",
+            placeholder="Paste song requests here, one line or one paragraph at a time...",
+            height=110,
+        )
+        comment_dump = st.text_area(
+            "Comments / request extraction inbox",
+            placeholder="Paste YouTube comments here and A.R.I.A. will try to spot recurring song requests or audience signals...",
+            height=140,
+        )
+        request_col1, request_col2 = st.columns(2)
+        run_secondary = request_col1.button("Fan Request Spin")
+        extract_requests = request_col2.button("Extract Requests From Comments")
+
+    with output_tab:
+        render_panel_header(
+            "Output Desk",
+            "Keep the latest generation visible while you iterate on concepts and request signals.",
+        )
+        st.text_area(
+            "Last Coach Output",
+            value=st.session_state.niche_output,
+            height=320,
+            placeholder="Generated ideas will appear here...",
+        )
+        meta_col1, meta_col2 = st.columns([1, 1])
+        with meta_col1:
+            st.markdown(f"**Last action:** {st.session_state.niche_last_action}")
+        with meta_col2:
+            st.caption(
+                "The best prompts usually include the song, the emotional tone, and whether the framing should feel Broadway, intimate, or celestial."
+            )
+        with st.expander("Suggested Prompt Language"):
+            st.caption(
+                "Try phrases like male version, reimagined ballad, Hazbin-style intensity, Epic-style storytelling, or dreamy late-night original."
+            )
 
     if clear_output:
         st.session_state.niche_output = ""
@@ -849,16 +1418,6 @@ def render_niche_lab() -> None:
         st.session_state.niche_output = response or ""
         st.session_state.niche_last_action = "Comment Request Extraction"
 
-    st.markdown("### Workspace")
-    result_col, notes_col = st.columns([1.5, 1])
-    with result_col:
-        st.text_area("Last Coach Output", value=st.session_state.niche_output, height=280, placeholder="Generated ideas will appear here...")
-    with notes_col:
-        st.markdown(f"**Last action:** {st.session_state.niche_last_action}")
-        st.markdown("**Prompt tips**")
-        st.caption("The best results usually come from naming the song, the emotional tone, and whether the spin should feel Broadway, intimate, or celestial.")
-        st.markdown("**Suggested angles**")
-        st.caption("Try phrases like male version, reimagined ballad, Hazbin-style intensity, Epic-style storytelling, or dreamy late-night original.")
 
 
 def render_content_calendar() -> None:
@@ -929,6 +1488,12 @@ def render_content_calendar() -> None:
     with top_row3:
         render_insight_card("Due in 14 Days", f"{len(due_soon):,}", "Upcoming deadlines worth protecting this week.")
 
+    render_panel_header(
+        "Visual Board",
+        "Scan the current repertoire by stage before dropping into the detailed editor and planning tools.",
+    )
+    render_repertoire_stage_board(edited_df)
+
     left, right = st.columns([1.2, 1])
     with left:
         stage_chart = px.bar(
@@ -955,7 +1520,7 @@ def render_content_calendar() -> None:
         else:
             st.dataframe(due_soon[["title", "stage", "target_upload_date"]], use_container_width=True, hide_index=True)
 
-    board_tab, timeline_tab, coach_tab = st.tabs(["Idea Board", "Timeline", "V.O.C.A.L. Notes"])
+    board_tab, timeline_tab, coach_tab = st.tabs(["Idea Board", "Timeline", "A.R.I.A. Notes"])
     with board_tab:
         render_idea_board(edited_df)
     with timeline_tab:
@@ -989,31 +1554,47 @@ def render_vault() -> None:
     vault = st.session_state.vault_settings
     connection = get_connection_status(vault)
 
-    if connection.connected:
-        st.success(connection.message)
-    else:
-        st.info(connection.message)
+    left, right = st.columns([1.35, 0.85])
+    with left:
+        render_panel_header(
+            "Local Defaults",
+            "Keep reusable metadata and model settings here so each new upload starts from a consistent base.",
+        )
+        if connection.connected:
+            st.success(connection.message)
+        else:
+            st.info(connection.message)
 
-    default_description = st.text_area(
-        "Default Description",
-        value=vault.get("default_description", ""),
-        height=220,
-        placeholder="Standard links, music platform URLs, Discord, and gear list...",
-    )
-    youtube_api_key = st.text_input("YouTube API Key", value=vault.get("youtube_api_key", ""), type="password", placeholder="Leave blank for now")
-    youtube_client_id = st.text_input("YouTube Client ID", value=vault.get("youtube_client_id", ""), type="password", placeholder="Leave blank for now")
-    youtube_client_secret = st.text_input("YouTube Client Secret", value=vault.get("youtube_client_secret", ""), type="password", placeholder="Leave blank for now")
-    ollama_model = st.selectbox(
-        "Local LLM Model",
-        options=["gemma", "gemma:7b", "llama3:8b"],
-        index=["gemma", "gemma:7b", "llama3:8b"].index(vault.get("ollama_model", "gemma"))
-        if vault.get("ollama_model", "gemma") in ["gemma", "gemma:7b", "llama3:8b"]
-        else 0,
-    )
+        default_description = st.text_area(
+            "Default Description",
+            value=vault.get("default_description", ""),
+            height=220,
+            placeholder="Standard links, music platform URLs, Discord, and gear list...",
+        )
+        ollama_model = st.selectbox(
+            "Local LLM Model",
+            options=["gemma", "gemma:7b", "llama3:8b", "gemma4:e2b"],
+            index=["gemma", "gemma:7b", "llama3:8b", "gemma4:e2b"].index(vault.get("ollama_model", "gemma"))
+            if vault.get("ollama_model", "gemma") in ["gemma", "gemma:7b", "llama3:8b", "gemma4:e2b"]
+            else 0,
+        )
 
-    st.markdown("### Setup Notes")
-    st.caption("This app stays local-first. Leave API fields empty until you want to enable live YouTube data.")
-    st.caption("A.R.I.A. runs through Ollama on your own machine, so speed depends on the local model you have pulled.")
+    with right:
+        render_panel_header(
+            "API & Runtime",
+            "Credentials can stay empty until you switch on live YouTube data. The app remains fully local without them.",
+        )
+        youtube_api_key = st.text_input("YouTube API Key", value=vault.get("youtube_api_key", ""), type="password", placeholder="Leave blank for now")
+        youtube_client_id = st.text_input("YouTube Client ID", value=vault.get("youtube_client_id", ""), type="password", placeholder="Leave blank for now")
+        youtube_client_secret = st.text_input("YouTube Client Secret", value=vault.get("youtube_client_secret", ""), type="password", placeholder="Leave blank for now")
+        render_editorial_list(
+            "Setup Notes",
+            [
+                ("Privacy", "Local-first by default"),
+                ("Live Data", "Optional until API keys are added"),
+                ("Model Runtime", "Depends on your local Ollama install"),
+            ],
+        )
 
     if st.button("Save Vault Settings"):
         updated = {
@@ -1033,8 +1614,8 @@ def main() -> None:
     inject_theme()
     render_hero()
 
-    command_center, niche_lab, repertoire, vault = st.tabs(
-        ["Command Center", "Niche Lab", "Repertoire", "The Vault"]
+    command_center, niche_lab, repertoire, shorts_architect, vault = st.tabs(
+        ["Command Center", "Niche Lab", "Repertoire", "Shorts Architect", "The Vault"]
     )
 
     with command_center:
@@ -1043,6 +1624,8 @@ def main() -> None:
         render_niche_lab()
     with repertoire:
         render_content_calendar()
+    with shorts_architect:
+        render_shorts_architect()
     with vault:
         render_vault()
 
