@@ -19,13 +19,13 @@ DEFAULT_CALENDAR_ROWS = [
     {
         "title": "Why My CTR Dropped Last Month",
         "stage": "Idea",
-        "target_upload_date": "",
+        "target_upload_date": None,
         "notes": "Break down thumbnails and titles from recent uploads.",
     },
     {
         "title": "3 Editing Tweaks That Improved Retention",
         "stage": "Scripting",
-        "target_upload_date": "",
+        "target_upload_date": None,
         "notes": "Use side-by-side examples from older videos.",
     },
 ]
@@ -46,13 +46,27 @@ def load_calendar() -> pd.DataFrame:
 
     for column in ["title", "stage", "target_upload_date", "notes"]:
         if column not in frame.columns:
-            frame[column] = ""
+            frame[column] = None if column == "target_upload_date" else ""
+
+    frame["title"] = frame["title"].fillna("").astype(str)
+    frame["stage"] = frame["stage"].fillna("Idea").replace("", "Idea").astype(str)
+    frame["notes"] = frame["notes"].fillna("").astype(str)
+    frame["target_upload_date"] = pd.to_datetime(frame["target_upload_date"], errors="coerce")
 
     return frame[["title", "stage", "target_upload_date", "notes"]]
 
 
 def save_calendar(df: pd.DataFrame) -> None:
-    sanitized = df.fillna("").to_dict(orient="records")
+    sanitized_df = df.copy()
+    sanitized_df["title"] = sanitized_df["title"].fillna("").astype(str)
+    sanitized_df["stage"] = sanitized_df["stage"].fillna("Idea").replace("", "Idea").astype(str)
+    sanitized_df["notes"] = sanitized_df["notes"].fillna("").astype(str)
+    sanitized_df["target_upload_date"] = pd.to_datetime(
+        sanitized_df["target_upload_date"], errors="coerce"
+    ).dt.strftime("%Y-%m-%d")
+    sanitized_df["target_upload_date"] = sanitized_df["target_upload_date"].fillna("")
+
+    sanitized = sanitized_df.to_dict(orient="records")
     with CALENDAR_PATH.open("w", encoding="utf-8") as file:
         json.dump(sanitized, file, indent=2)
 

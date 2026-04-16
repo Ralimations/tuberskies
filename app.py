@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import textwrap
+from datetime import date, timedelta
 from typing import Iterable
 
 import ollama
@@ -25,6 +26,10 @@ def initialize_state() -> None:
         st.session_state.calendar_df = load_calendar()
     if "vault_settings" not in st.session_state:
         st.session_state.vault_settings = load_vault_settings()
+    if "niche_output" not in st.session_state:
+        st.session_state.niche_output = ""
+    if "niche_last_action" not in st.session_state:
+        st.session_state.niche_last_action = "No generation yet."
 
 
 def stream_ollama_response(prompt: str, model: str) -> Iterable[str]:
@@ -56,6 +61,26 @@ def build_metric_row(df: pd.DataFrame) -> None:
     col3.metric("Watch Time Hours (30d)", f"{snapshot.watch_time_hours:,}")
 
 
+def build_health_snapshot(df: pd.DataFrame) -> None:
+    latest = df.tail(7)
+    previous = df.tail(14).head(7)
+    if latest.empty or previous.empty:
+        return
+
+    ctr_delta = latest["ctr"].mean() - previous["ctr"].mean()
+    retention_delta = latest["retention"].mean() - previous["retention"].mean()
+    views_delta = latest["views"].sum() - previous["views"].sum()
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("CTR vs Prev 7d", f"{latest['ctr'].mean():.2f}%", f"{ctr_delta:+.2f} pts")
+    col2.metric(
+        "Retention vs Prev 7d",
+        f"{latest['retention'].mean():.2f}%",
+        f"{retention_delta:+.2f} pts",
+    )
+    col3.metric("Views vs Prev 7d", f"{latest['views'].sum():,}", f"{views_delta:+,}")
+
+
 def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
     labels = {
         "ctr": "CTR (%)",
@@ -72,6 +97,55 @@ def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
     )
     chart.update_layout(height=360, margin=dict(l=20, r=20, t=60, b=20))
     st.plotly_chart(chart, use_container_width=True)
+
+
+def get_alert_rows(df: pd.DataFrame) -> pd.DataFrame:
+    return df[(df["ctr"] < 5.0) | (df["retention"] < 42.0)].sort_values("date", ascending=False)
+
+
+def build_coach_prompt(topic: str, working_title: str, action: str) -> str:
+    prompts = {
+        "title_pack": f"""
+        You are an expert YouTube strategist.
+        Generate 5 viral video titles for the topic below.
+        Include a one-line angle note under each title.
+
+        Topic: {topic}
+        Working title: {working_title}
+        """,
+        "description_tags": f"""
+        Create a YouTube-optimized description and a comma-separated list of SEO tags.
+        Keep the result clean and skimmable.
+
+        Topic context: {topic}
+        Working title: {working_title}
+        """,
+        "hook_pack": f"""
+        You are an expert retention-focused YouTube strategist.
+        Generate 10 opening hooks for this video idea.
+        Make them sound natural, curiosity-driven, and high-retention.
+
+        Topic: {topic}
+        Working title: {working_title}
+        """,
+        "content_brief": f"""
+        Build a practical YouTube content brief for this idea.
+        Include target viewer, promise, thumbnail concept, outline, and call to action.
+
+        Topic: {topic}
+        Working title: {working_title}
+        """,
+    }
+    return textwrap.dedent(prompts[action]).strip()
+
+
+def normalize_calendar_df(df: pd.DataFrame) -> pd.DataFrame:
+    normalized = df.copy()
+    normalized["title"] = normalized["title"].fillna("").astype(str)
+    normalized["stage"] = normalized["stage"].replace("", "Idea").fillna("Idea")
+    normalized["notes"] = normalized["notes"].fillna("").astype(str)
+    normalized["target_upload_date"] = pd.to_datetime(normalized["target_upload_date"], errors="coerce")
+    return normalized
 
 
 def render_command_center() -> None:
@@ -94,6 +168,7 @@ def render_command_center() -> None:
         st.info(live_message)
 
     build_metric_row(analytics_df)
+    build_health_snapshot(analytics_df)
 
     selected_metric = st.radio(
         "Chart focus",
@@ -108,6 +183,17 @@ def render_command_center() -> None:
     with right:
         st.markdown("### Coaching Context")
         st.dataframe(analytics_df.tail(10), use_container_width=True, hide_index=True)
+
+        alerts = get_alert_rows(analytics_df).head(5)
+        if alerts.empty:
+            st.success("No major mock-data alerts right now.")
+        else:
+            st.warning("Potential weak spots detected in recent performance.")
+            st.dataframe(
+                alerts[["date", "views", "ctr", "retention"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
         if st.button("Analyze with Coach", key="command_center_coach"):
             model = st.session_state.vault_settings.get("ollama_model", "gemma")
@@ -142,27 +228,91 @@ def render_niche_lab() -> None:
         value=st.session_state.vault_settings.get("ollama_model", "gemma"),
     )
 
-    if st.button("Ask Coach", type="primary"):
-        prompt = f"You are an expert YouTube strategist. Give me 5 viral video titles for the topic: {topic}"
-        with st.chat_message("assistant"):
-            st.write_stream(stream_ollama_response(prompt, model))
+    action_labels = {
+        "title_pack": "Title Pack",
+        "hook_pack": "Hook Pack",
+        "description_tags": "Description + Tags",
+        "content_brief": "Content Brief",
+    }
+    selected_action = st.selectbox(
+        "Generation mode",
+        options=list(action_labels.keys()),
+        format_func=lambda value: action_labels[value],
+    )
 
-    if st.button("Generate Description + Tags"):
-        prompt = textwrap.dedent(
-            f"""
-            Create a YouTube-optimized description and a comma-separated list of SEO tags.
-            Topic context: {topic}
-            Working title: {working_title}
-            Keep the output skimmable.
-            """
-        ).strip()
+    col1, col2, col3 = st.columns([1, 1, 1.2])
+    run_primary = col1.button("Ask Coach", type="primary")
+    run_secondary = col2.button("Quick Hooks")
+    clear_output = col3.button("Clear Output")
+
+    if clear_output:
+        st.session_state.niche_output = ""
+        st.session_state.niche_last_action = "Output cleared."
+
+    if run_primary:
+        prompt = build_coach_prompt(topic, working_title, selected_action)
         with st.chat_message("assistant"):
-            st.write_stream(stream_ollama_response(prompt, model))
+            response = st.write_stream(stream_ollama_response(prompt, model))
+        st.session_state.niche_output = response or ""
+        st.session_state.niche_last_action = action_labels[selected_action]
+
+    if run_secondary:
+        prompt = build_coach_prompt(topic, working_title, "hook_pack")
+        with st.chat_message("assistant"):
+            response = st.write_stream(stream_ollama_response(prompt, model))
+        st.session_state.niche_output = response or ""
+        st.session_state.niche_last_action = "Hook Pack"
+
+    st.markdown("### Workspace")
+    result_col, notes_col = st.columns([1.5, 1])
+    with result_col:
+        st.text_area(
+            "Last Coach Output",
+            value=st.session_state.niche_output,
+            height=280,
+            placeholder="Generated ideas will appear here...",
+        )
+    with notes_col:
+        st.markdown(f"**Last action:** {st.session_state.niche_last_action}")
+        st.markdown("**Prompt tips**")
+        st.caption(
+            "The best results usually come from a clear topic, a rough audience, and one sharp promise."
+        )
+        st.markdown("**Suggested angles**")
+        st.caption(
+            "Try adding stakes, transformation, or a narrow viewer persona like beginners, freelancers, or new parents."
+        )
 
 
 def render_content_calendar() -> None:
     st.subheader("Content Calendar")
     st.caption("Persistent local production board powered by `st.data_editor`.")
+
+    today = pd.Timestamp(date.today())
+    default_due = today + pd.Timedelta(days=7)
+
+    quick_add_col1, quick_add_col2, quick_add_col3, quick_add_col4 = st.columns([1.4, 1, 1, 0.9])
+    quick_title = quick_add_col1.text_input("Quick add title", placeholder="New upload idea")
+    quick_stage = quick_add_col2.selectbox("Quick stage", options=STAGES, index=0)
+    quick_date = quick_add_col3.date_input("Target date", value=default_due.to_pydatetime())
+    add_project = quick_add_col4.button("Add Project", use_container_width=True)
+
+    if add_project and quick_title.strip():
+        new_row = pd.DataFrame(
+            [
+                {
+                    "title": quick_title.strip(),
+                    "stage": quick_stage,
+                    "target_upload_date": pd.Timestamp(quick_date),
+                    "notes": "",
+                }
+            ]
+        )
+        st.session_state.calendar_df = pd.concat(
+            [st.session_state.calendar_df, new_row], ignore_index=True
+        )
+        save_calendar(st.session_state.calendar_df)
+        st.success("Project added to your local calendar.")
 
     edited_df = st.data_editor(
         st.session_state.calendar_df,
@@ -177,23 +327,51 @@ def render_content_calendar() -> None:
         },
         key="content_calendar_editor",
     )
+    edited_df = normalize_calendar_df(edited_df)
 
-    stage_counts = edited_df["stage"].fillna("Idea").value_counts().reindex(STAGES, fill_value=0)
-    stage_chart = px.bar(
-        x=stage_counts.index,
-        y=stage_counts.values,
-        labels={"x": "Pipeline Stage", "y": "Projects"},
-        title="Pipeline Load",
-        template="plotly_white",
-    )
-    st.plotly_chart(stage_chart, use_container_width=True)
+    stage_counts = edited_df["stage"].value_counts().reindex(STAGES, fill_value=0)
+    due_soon = edited_df[
+        edited_df["target_upload_date"].notna()
+        & (edited_df["target_upload_date"] >= today)
+        & (edited_df["target_upload_date"] <= today + pd.Timedelta(days=14))
+    ].sort_values("target_upload_date")
+    ready_count = int(stage_counts.get("Ready for Upload", 0))
 
-    if st.button("Save Calendar"):
-        normalized = edited_df.copy()
-        normalized["stage"] = normalized["stage"].replace("", "Idea").fillna("Idea")
-        st.session_state.calendar_df = normalized
-        save_calendar(normalized)
+    top_row1, top_row2, top_row3 = st.columns(3)
+    top_row1.metric("Total Projects", f"{len(edited_df):,}")
+    top_row2.metric("Ready to Upload", ready_count)
+    top_row3.metric("Due in 14 Days", f"{len(due_soon):,}")
+
+    left, right = st.columns([1.2, 1])
+    with left:
+        stage_chart = px.bar(
+            x=stage_counts.index,
+            y=stage_counts.values,
+            labels={"x": "Pipeline Stage", "y": "Projects"},
+            title="Pipeline Load",
+            template="plotly_white",
+        )
+        st.plotly_chart(stage_chart, use_container_width=True)
+    with right:
+        st.markdown("### Upcoming Deadlines")
+        if due_soon.empty:
+            st.info("No projects due in the next 14 days.")
+        else:
+            st.dataframe(
+                due_soon[["title", "stage", "target_upload_date"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    action_col1, action_col2 = st.columns([1, 1.5])
+    if action_col1.button("Save Calendar"):
+        st.session_state.calendar_df = edited_df
+        save_calendar(edited_df)
         st.success("Content calendar saved locally.")
+    if action_col2.button("Autosave Current Table"):
+        st.session_state.calendar_df = edited_df
+        save_calendar(edited_df)
+        st.success("Current editor state saved.")
 
 
 def render_vault() -> None:
@@ -237,6 +415,14 @@ def render_vault() -> None:
         index=["gemma", "gemma:7b", "llama3:8b"].index(vault.get("ollama_model", "gemma"))
         if vault.get("ollama_model", "gemma") in ["gemma", "gemma:7b", "llama3:8b"]
         else 0,
+    )
+
+    st.markdown("### Setup Notes")
+    st.caption(
+        "This app stays local-first. Leave API fields empty until you want to enable live YouTube data."
+    )
+    st.caption(
+        "Ollama responses stream from your local machine, so generation speed depends on the model you have pulled."
     )
 
     if st.button("Save Vault Settings"):
