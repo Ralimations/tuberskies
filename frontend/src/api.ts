@@ -1,4 +1,4 @@
-import type { BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, VaultPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, VaultPayload } from "./types";
 
 export async function loadBootstrap(): Promise<BootstrapPayload> {
   const response = await fetch("/api/bootstrap");
@@ -144,4 +144,8 @@ export function scoreIdeation(topic: string, workingTitle: string): Promise<Idea
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ topic, working_title: workingTitle })
   });
+}
+
+export function loadAnalytics(): Promise<AnalyticsPayload> {
+  return requestJson("/api/analytics");
 }

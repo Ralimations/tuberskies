@@ -94,3 +94,25 @@ export type IdeationScorePayload = {
   keywords: Record<string, unknown>[];
   scorecard: { label: string; value: string }[];
 };
+
+export type AnalyticsPayload = {
+  source: string;
+  profile: {
+    title?: string;
+    handle?: string;
+  };
+  stats: Stat[];
+  today: BootstrapPayload["today"];
+  rows: Record<string, unknown>[];
+  alerts: Record<string, unknown>[];
+  publishTiming: Record<string, unknown>[];
+  auditRows: { label: string; value: string }[];
+  actionCards: {
+    category: string;
+    title: string;
+    body: string;
+    cta: string;
+    path: string;
+  }[];
+  messages: Record<string, string>;
+};

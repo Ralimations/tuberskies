@@ -6,6 +6,7 @@ import {
   draftComment,
   draftMetadata,
   generateIdeation,
+  loadAnalytics,
   loadBootstrap,
   loadComments,
   loadCreatorActions,
@@ -19,7 +20,7 @@ import {
   scoreIdeation
 } from "./api";
 import { Icon } from "./icons";
-import type { BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, NavItem, RepertoirePayload, VaultPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, NavItem, RepertoirePayload, VaultPayload } from "./types";
 
 const fallbackData: BootstrapPayload = {
   navigation: [
@@ -247,11 +248,37 @@ function AskPage({ data }: { data: BootstrapPayload }) {
 }
 
 function AnalyticsPage({ data }: { data: BootstrapPayload }) {
+  const [payload, setPayload] = useState<AnalyticsPayload | null>(null);
+  const [metric, setMetric] = useState("views");
+  const [status, setStatus] = useState("");
+  const analytics = payload ?? {
+    source: data.profile.source,
+    profile: data.profile,
+    stats: data.stats,
+    today: data.today,
+    rows: data.analyticsRows,
+    alerts: [],
+    publishTiming: [],
+    auditRows: [],
+    actionCards: [],
+    messages: data.messages
+  };
+
+  useEffect(() => {
+    loadAnalytics()
+      .then((result) => {
+        setPayload(result);
+        setStatus("");
+      })
+      .catch((error: Error) => setStatus(error.message));
+  }, []);
+
   return (
     <section className="page-stack">
-      <Hero data={data} />
+      <Hero data={{ ...data, profile: { ...data.profile, title: String(analytics.profile.title ?? data.profile.title), handle: String(analytics.profile.handle ?? data.profile.handle), source: analytics.source } }} />
+      {status ? <div className="status error">{status}</div> : null}
       <div className="grid stats-grid">
-        {data.stats.map((stat) => (
+        {analytics.stats.map((stat) => (
           <div className="metric-card" key={stat.label}>
             <span>{stat.label}</span>
             <strong>{stat.value}</strong>
@@ -259,17 +286,47 @@ function AnalyticsPage({ data }: { data: BootstrapPayload }) {
           </div>
         ))}
       </div>
+      <Panel title="Performance Trend">
+        <div className="analytics-toolbar">
+          {["views", "retention", "ctr", "watch_time_hours"].map((item) => (
+            <button className={metric === item ? "active" : ""} key={item} onClick={() => setMetric(item)}>
+              {item.replaceAll("_", " ")}
+            </button>
+          ))}
+        </div>
+        <Sparkline rows={analytics.rows} metric={metric} />
+      </Panel>
       <div className="grid two-col">
         <Panel title="Today Brief">
-          <InfoRow label="Focus" value={data.today.focus_title} />
-          <InfoRow label="Risk" value={data.today.risk_title} />
-          <InfoRow label="Opportunity" value={data.today.opportunity_title} />
-          <InfoRow label="Move" value={data.today.today_action} />
+          <InfoRow label="Focus" value={analytics.today.focus_title} />
+          <InfoRow label="Risk" value={analytics.today.risk_title} />
+          <InfoRow label="Opportunity" value={analytics.today.opportunity_title} />
+          <InfoRow label="Move" value={analytics.today.today_action} />
         </Panel>
-        <Panel title="Recent Analytics">
-          <DataTable rows={data.analyticsRows.slice(-7)} columns={["date", "views", "ctr", "retention"]} />
+        <Panel title="Channel Audit">
+          {analytics.auditRows.length ? analytics.auditRows.map((row) => <InfoRow key={row.label} label={row.label} value={row.value} />) : <p>Audit rows are loading.</p>}
         </Panel>
       </div>
+      <div className="grid two-col">
+        <Panel title="Alerts">
+          <DataTable rows={analytics.alerts} columns={["date", "views", "ctr", "retention"]} />
+        </Panel>
+        <Panel title="Publish Timing">
+          <DataTable rows={analytics.publishTiming} columns={["weekday", "avg_views", "avg_retention", "publish_score"]} />
+        </Panel>
+      </div>
+      <Panel title="Recommended Actions">
+        <div className="action-card-grid">
+          {analytics.actionCards.length ? analytics.actionCards.map((card) => (
+            <article className="action-card" key={`${card.category}-${card.title}`}>
+              <span>{card.category}</span>
+              <h3>{card.title}</h3>
+              <p>{card.body}</p>
+              <button onClick={() => { window.history.pushState({}, "", card.path); window.dispatchEvent(new PopStateEvent("popstate")); }}>{card.cta}</button>
+            </article>
+          )) : <p>No action cards loaded yet.</p>}
+        </div>
+      </Panel>
     </section>
   );
 }
@@ -806,6 +863,41 @@ function RecordSummary({ record }: { record: Record<string, unknown> }) {
       <span>{Number(record.retention ?? 0).toFixed(1)}% retention</span>
     </div>
   );
+}
+
+function Sparkline({ rows, metric }: { rows: Record<string, unknown>[]; metric: string }) {
+  const values = rows.map((row) => Number(row[metric] ?? 0)).filter((value) => Number.isFinite(value));
+  if (values.length < 2) return <p>No chart data loaded for {metric.replaceAll("_", " ")}.</p>;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = max - min || 1;
+  const points = values.map((value, index) => {
+    const x = (index / Math.max(values.length - 1, 1)) * 100;
+    const y = 100 - ((value - min) / spread) * 82 - 9;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  const latest = values[values.length - 1];
+  const previous = values[values.length - 2];
+  const direction = latest >= previous ? "up" : "down";
+
+  return (
+    <div className="sparkline-shell">
+      <svg className="sparkline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label={`${metric} trend`}>
+        <polyline points={points} />
+      </svg>
+      <div className="sparkline-meta">
+        <strong>{formatMetric(latest, metric)}</strong>
+        <span className={direction}>{direction === "up" ? "Rising" : "Softening"} from prior point</span>
+        <small>{rows.length} loaded day(s)</small>
+      </div>
+    </div>
+  );
+}
+
+function formatMetric(value: number, metric: string) {
+  if (metric === "views") return Math.round(value).toLocaleString();
+  if (metric === "watch_time_hours") return `${value.toFixed(1)}h`;
+  return `${value.toFixed(2)}%`;
 }
 
 function DataTable({ rows, columns }: { rows: Record<string, unknown>[]; columns: string[] }) {

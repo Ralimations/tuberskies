@@ -15,8 +15,11 @@ from pydantic import BaseModel
 
 from aria_app.ai import build_coach_prompt
 from aria_app.features.command_center_parts.analytics import (
+    build_channel_audit_rows,
     build_creator_hero_stats,
+    build_publish_timing_table,
     build_today_desk_payload,
+    get_alert_rows,
 )
 from aria_app.features.command_center_parts.keyword_tools import build_keyword_opportunity_df, build_title_scorecard
 from aria_app.features.command_center_parts.upload_metrics import build_upload_takeaways
@@ -163,6 +166,97 @@ def _video_options(video_df: pd.DataFrame | None) -> list[dict[str, str]]:
         if video_id:
             options.append({"label": f"{title[:72]} | {video_id}", "video_id": video_id, "title": title})
     return options
+
+
+def _build_react_action_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    analytics_df = payload["analytics_df"]
+    video_df = payload["video_df"]
+    calendar_df = payload["calendar_df"]
+    today_payload = payload["today_payload"]
+    upload_takeaways = payload["upload_takeaways"]
+    cards: list[dict[str, Any]] = []
+
+    alerts = get_alert_rows(analytics_df).head(1) if analytics_df is not None and not analytics_df.empty else pd.DataFrame()
+    if not alerts.empty:
+        alert = alerts.iloc[0]
+        metric_note = f"Retention {float(alert.get('retention', 0)):.1f}%"
+        if "ctr" in alert and pd.notna(alert.get("ctr")):
+            metric_note = f"CTR {float(alert.get('ctr', 0)):.1f}% | {metric_note}"
+        cards.append(
+            {
+                "category": "Analytics",
+                "title": f"Review the dip on {alert['date'].strftime('%b %d')}",
+                "body": f"{metric_note}. Check whether the next title, thumbnail promise, or first 20 seconds needs tightening.",
+                "cta": "Ask A.R.I.A. about this risk",
+                "path": "/",
+            }
+        )
+
+    focus_title = today_payload.get("focus_title", "")
+    cards.append(
+        {
+            "category": "Production",
+            "title": f"Move {focus_title} forward" if focus_title and focus_title != "No active song selected" else "Add one active song to the pipeline",
+            "body": today_payload.get("focus_reason", "A.R.I.A. needs one current song before it can rank the best production move."),
+            "cta": "Open Repertoire",
+            "path": "/repertoire",
+        }
+    )
+
+    best = upload_takeaways.get("best") if upload_takeaways else None
+    if best is not None:
+        title = str(best.get("title", "Top upload"))
+        cards.append(
+            {
+                "category": "Optimization",
+                "title": "Repeat the strongest upload pattern",
+                "body": f"{title[:90]} is the strongest upload in view. Use its framing as the model for the next title, hook, or cover concept.",
+                "cta": "Open Upload Lab",
+                "path": "/upload-lab",
+            }
+        )
+
+    timing_df = build_publish_timing_table(analytics_df)
+    if not timing_df.empty:
+        best_day = timing_df.sort_values("publish_score", ascending=False).iloc[0]
+        cards.append(
+            {
+                "category": "Research",
+                "title": f"Protect {best_day['weekday']} for a strong upload",
+                "body": f"{best_day['weekday']} leads the publish score at {float(best_day['publish_score']):.1f}. Save it for the most polished near-ready release.",
+                "cta": "Review publish timing",
+                "path": "/analytics",
+            }
+        )
+
+    if video_df is not None and not video_df.empty and "comment_count" in video_df.columns:
+        comment_total = int(video_df["comment_count"].fillna(0).sum())
+        if comment_total > 0:
+            cards.append(
+                {
+                    "category": "Community",
+                    "title": "Reply to recent comments safely",
+                    "body": f"The loaded upload window has {comment_total:,} comments. Draft warm replies, then post one at a time.",
+                    "cta": "Open Creator Actions",
+                    "path": "/creator-actions",
+                }
+            )
+
+    if calendar_df is not None and not calendar_df.empty:
+        active = calendar_df[calendar_df["stage"].isin(["Upload", "Video Editing", "BandLab Recording"])]
+        if not active.empty:
+            row = active.iloc[0]
+            cards.append(
+                {
+                    "category": "Shorts",
+                    "title": "Turn the next performance into Shorts",
+                    "body": f"{row.get('title', 'Your next release')} is far enough along to prepare vertical clips or captions.",
+                    "cta": "Open Shorts Architect",
+                    "path": "/shorts",
+                }
+            )
+
+    return cards[:6]
 
 
 def _calendar_rows_to_frame(rows: list[CalendarRow]) -> pd.DataFrame:
@@ -451,6 +545,40 @@ def score_ideation(request: IdeationRequest) -> dict[str, Any]:
         {
             "keywords": keywords,
             "scorecard": [{"label": label, "value": value} for label, value in scorecard],
+        }
+    )
+
+
+@app.get("/api/analytics")
+def analytics() -> dict[str, Any]:
+    payload = _load_context()
+    analytics_df = payload["analytics_df"]
+    calendar_df = payload["calendar_df"]
+    video_df = payload["video_df"]
+    analytics_rows = analytics_df.tail(45).copy()
+    alert_rows = get_alert_rows(analytics_df).head(8).copy()
+    timing_df = build_publish_timing_table(analytics_df)
+    audit_rows = build_channel_audit_rows(analytics_df, calendar_df, payload["settings"])
+
+    for frame in (analytics_rows, alert_rows):
+        if "date" in frame.columns:
+            frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    return _json_safe(
+        {
+            "source": payload["source"],
+            "profile": payload["profile"],
+            "stats": [
+                {"label": label, "value": value, "meta": meta}
+                for label, value, meta in build_creator_hero_stats(analytics_df, video_df, calendar_df, payload["profile"])
+            ],
+            "today": payload["today_payload"],
+            "rows": analytics_rows,
+            "alerts": alert_rows,
+            "publishTiming": timing_df,
+            "auditRows": [{"label": label, "value": value} for label, value in audit_rows],
+            "actionCards": _build_react_action_cards(payload),
+            "messages": payload["messages"],
         }
     )
 
