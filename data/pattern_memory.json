@@ -1,0 +1,246 @@
+{
+  "history": [
+    {
+      "generated_at": "2026-04-16T14:09:27",
+      "fingerprint": "cd61b4342f3dff44d8ba2826d0c8c986ff70ddafeedc65401ed4307ba9b0e92d",
+      "title_patterns": [
+        {
+          "pattern": "why",
+          "type": "keyword",
+          "count": 1
+        },
+        {
+          "pattern": "ctr",
+          "type": "keyword",
+          "count": 1
+        },
+        {
+          "pattern": "dropped",
+          "type": "keyword",
+          "count": 1
+        },
+        {
+          "pattern": "last",
+          "type": "keyword",
+          "count": 1
+        },
+        {
+          "pattern": "month",
+          "type": "keyword",
+          "count": 1
+        },
+        {
+          "pattern": "editing",
+          "type": "keyword",
+          "count": 1
+        },
+        {
+          "pattern": "ctr dropped",
+          "type": "phrase",
+          "count": 1
+        },
+        {
+          "pattern": "ctr dropped last",
+          "type": "phrase",
+          "count": 1
+        }
+      ],
+      "publish_memory": {
+        "best_day": "Friday",
+        "best_score": 2616.5,
+        "weak_day": "Wednesday",
+        "weak_score": 1838.4,
+        "weekday_rows": [
+          {
+            "weekday": "Monday",
+            "avg_views": 2496.2,
+            "avg_retention": 63.1,
+            "publish_score": 1919.6
+          },
+          {
+            "weekday": "Tuesday",
+            "avg_views": 2413.4,
+            "avg_retention": 61.72,
+            "publish_score": 1857.9
+          },
+          {
+            "weekday": "Wednesday",
+            "avg_views": 2381.1,
+            "avg_retention": 61.18,
+            "publish_score": 1838.4
+          },
+          {
+            "weekday": "Thursday",
+            "avg_views": 3403.3,
+            "avg_retention": 62.78,
+            "publish_score": 2376.1
+          },
+          {
+            "weekday": "Friday",
+            "avg_views": 3827.1,
+            "avg_retention": 63.63,
+            "publish_score": 2616.5
+          },
+          {
+            "weekday": "Saturday",
+            "avg_views": 3139.0,
+            "avg_retention": 60.67,
+            "publish_score": 2243.9
+          },
+          {
+            "weekday": "Sunday",
+            "avg_views": 3126.8,
+            "avg_retention": 61.49,
+            "publish_score": 2234.4
+          }
+        ]
+      },
+      "stage_memory": {
+        "bottleneck_stage": "Song Idea",
+        "bottleneck_count": 1,
+        "overdue_count": 0,
+        "stage_rows": [
+          {
+            "stage": "Song Idea",
+            "count": 1
+          },
+          {
+            "stage": "Instrumental Prep",
+            "count": 1
+          }
+        ]
+      },
+      "pillar_memory": [],
+      "niche_hint": "",
+      "repeat_more": [
+        "Prioritize stronger uploads for Friday, your current best-performing weekday.",
+        "Reuse the framing around 'why' when it fits naturally."
+      ],
+      "reduce_or_fix": [
+        "Too many songs are stuck in Song Idea; clear that lane before adding more ideas.",
+        "Treat Wednesday as a weaker release day unless the upload is especially strong."
+      ]
+    }
+  ],
+  "latest": {
+    "generated_at": "2026-04-16T14:09:27",
+    "fingerprint": "cd61b4342f3dff44d8ba2826d0c8c986ff70ddafeedc65401ed4307ba9b0e92d",
+    "title_patterns": [
+      {
+        "pattern": "why",
+        "type": "keyword",
+        "count": 1
+      },
+      {
+        "pattern": "ctr",
+        "type": "keyword",
+        "count": 1
+      },
+      {
+        "pattern": "dropped",
+        "type": "keyword",
+        "count": 1
+      },
+      {
+        "pattern": "last",
+        "type": "keyword",
+        "count": 1
+      },
+      {
+        "pattern": "month",
+        "type": "keyword",
+        "count": 1
+      },
+      {
+        "pattern": "editing",
+        "type": "keyword",
+        "count": 1
+      },
+      {
+        "pattern": "ctr dropped",
+        "type": "phrase",
+        "count": 1
+      },
+      {
+        "pattern": "ctr dropped last",
+        "type": "phrase",
+        "count": 1
+      }
+    ],
+    "publish_memory": {
+      "best_day": "Friday",
+      "best_score": 2616.5,
+      "weak_day": "Wednesday",
+      "weak_score": 1838.4,
+      "weekday_rows": [
+        {
+          "weekday": "Monday",
+          "avg_views": 2496.2,
+          "avg_retention": 63.1,
+          "publish_score": 1919.6
+        },
+        {
+          "weekday": "Tuesday",
+          "avg_views": 2413.4,
+          "avg_retention": 61.72,
+          "publish_score": 1857.9
+        },
+        {
+          "weekday": "Wednesday",
+          "avg_views": 2381.1,
+          "avg_retention": 61.18,
+          "publish_score": 1838.4
+        },
+        {
+          "weekday": "Thursday",
+          "avg_views": 3403.3,
+          "avg_retention": 62.78,
+          "publish_score": 2376.1
+        },
+        {
+          "weekday": "Friday",
+          "avg_views": 3827.1,
+          "avg_retention": 63.63,
+          "publish_score": 2616.5
+        },
+        {
+          "weekday": "Saturday",
+          "avg_views": 3139.0,
+          "avg_retention": 60.67,
+          "publish_score": 2243.9
+        },
+        {
+          "weekday": "Sunday",
+          "avg_views": 3126.8,
+          "avg_retention": 61.49,
+          "publish_score": 2234.4
+        }
+      ]
+    },
+    "stage_memory": {
+      "bottleneck_stage": "Song Idea",
+      "bottleneck_count": 1,
+      "overdue_count": 0,
+      "stage_rows": [
+        {
+          "stage": "Song Idea",
+          "count": 1
+        },
+        {
+          "stage": "Instrumental Prep",
+          "count": 1
+        }
+      ]
+    },
+    "pillar_memory": [],
+    "niche_hint": "",
+    "repeat_more": [
+      "Prioritize stronger uploads for Friday, your current best-performing weekday.",
+      "Reuse the framing around 'why' when it fits naturally."
+    ],
+    "reduce_or_fix": [
+      "Too many songs are stuck in Song Idea; clear that lane before adding more ideas.",
+      "Treat Wednesday as a weaker release day unless the upload is especially strong."
+    ]
+  }
+}

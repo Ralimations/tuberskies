@@ -13,6 +13,7 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 CALENDAR_PATH = DATA_DIR / "content_calendar.json"
+PATTERN_MEMORY_PATH = DATA_DIR / "pattern_memory.json"
 ENV_PATH = BASE_DIR / ".env"
 
 DEFAULT_CALENDAR_ROWS = [
@@ -97,6 +98,32 @@ def save_calendar(df: pd.DataFrame) -> None:
     sanitized = sanitized_df.to_dict(orient="records")
     with CALENDAR_PATH.open("w", encoding="utf-8") as file:
         json.dump(sanitized, file, indent=2)
+
+
+def load_pattern_memory() -> dict[str, Any]:
+    if not PATTERN_MEMORY_PATH.exists():
+        return {"history": [], "latest": None}
+
+    with PATTERN_MEMORY_PATH.open("r", encoding="utf-8") as file:
+        payload = json.load(file)
+
+    if not isinstance(payload, dict):
+        return {"history": [], "latest": None}
+
+    history = payload.get("history", [])
+    latest = payload.get("latest")
+    if not isinstance(history, list):
+        history = []
+
+    return {"history": history, "latest": latest}
+
+
+def save_pattern_memory(memory: dict[str, Any]) -> None:
+    history = memory.get("history", [])
+    latest = memory.get("latest")
+    payload = {"history": history[-25:], "latest": latest}
+    with PATTERN_MEMORY_PATH.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, indent=2)
 
 
 def load_vault_settings() -> dict[str, str]:
