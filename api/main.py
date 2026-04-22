@@ -10,12 +10,15 @@ import ollama
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from aria_app.ai import build_coach_prompt
 from aria_app.features.command_center_parts.analytics import (
     build_creator_hero_stats,
     build_today_desk_payload,
 )
+from aria_app.features.command_center_parts.keyword_tools import build_keyword_opportunity_df, build_title_scorecard
 from aria_app.features.command_center_parts.upload_metrics import build_upload_takeaways
 from aria_app.pattern_memory import refresh_pattern_memory
 from mock_data import generate_analytics_data
@@ -69,6 +72,14 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
+
+
+class IdeationRequest(BaseModel):
+    topic: str = ""
+    working_title: str = ""
+    action: str = "title_pack"
+    fan_request: str = ""
+    comment_dump: str = ""
 
 
 class VaultSettingsRequest(BaseModel):
@@ -276,6 +287,8 @@ def _build_chat_prompt(message: str, history: list[ChatMessage], context: str) -
         f"""
         You are A.R.I.A. answering as if the creator is chatting directly with their analytics.
         Be concrete, brief, and action-oriented. If data is demo, cached, missing, or uncertain, say so plainly.
+        If the creator is only greeting you, testing the chat, thanking you, or making small talk, respond naturally in one short sentence and do not give analytics recommendations yet.
+        Only give analytics recommendations when the creator asks for advice, analysis, decisions, risks, patterns, uploads, Shorts, metadata, comments, or next actions.
 
         Analytics context:
         {context}
@@ -287,6 +300,19 @@ def _build_chat_prompt(message: str, history: list[ChatMessage], context: str) -
         {message}
         """
     ).strip()
+
+
+def _small_talk_response(message: str) -> str | None:
+    cleaned = " ".join(message.lower().strip().replace("!", "").replace(".", "").split())
+    greetings = {"hi", "hello", "hey", "yo", "sup", "test", "testing"}
+    thanks = {"thanks", "thank you", "ty"}
+    if cleaned in greetings:
+        return "Hey. I am here and ready to read the channel with you."
+    if cleaned in thanks:
+        return "Anytime. Send me the next question when you want to dig in."
+    if cleaned in {"who are you", "what are you"}:
+        return "I am A.R.I.A., your local channel analytics and creator strategy assistant."
+    return None
 
 
 def _assistant_response(prompt: str, model: str) -> str:
@@ -304,6 +330,27 @@ def _assistant_response(prompt: str, model: str) -> str:
         return str(response.get("message", {}).get("content", "")).strip()
     except Exception as error:  # pragma: no cover
         return f"Local Ollama request failed: {error}"
+
+
+def _stream_assistant_response(prompt: str, model: str):
+    try:
+        stream = ollama.chat(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are A.R.I.A., a concise private YouTube analytics strategist for Ralskies.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            content = chunk.get("message", {}).get("content", "")
+            if content:
+                yield content
+    except Exception as error:  # pragma: no cover
+        yield f"Local Ollama request failed: {error}"
 
 
 @app.get("/api/health")
@@ -346,6 +393,9 @@ def bootstrap() -> dict[str, Any]:
 
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> dict[str, str]:
+    small_talk = _small_talk_response(request.message)
+    if small_talk:
+        return {"role": "assistant", "content": small_talk}
     payload = _load_context()
     prompt = _build_chat_prompt(request.message, request.history, _chat_context(payload))
     model = payload["settings"].get("ollama_model", "gemma")
@@ -353,6 +403,56 @@ def chat(request: ChatRequest) -> dict[str, str]:
     if not response:
         response = "I could not produce a response from the local model. Check Ollama, then try again."
     return {"role": "assistant", "content": response}
+
+
+@app.post("/api/chat/stream")
+def chat_stream(request: ChatRequest) -> StreamingResponse:
+    small_talk = _small_talk_response(request.message)
+    if small_talk:
+        return StreamingResponse(iter([small_talk]), media_type="text/plain")
+    payload = _load_context()
+    prompt = _build_chat_prompt(request.message, request.history, _chat_context(payload))
+    model = payload["settings"].get("ollama_model", "gemma")
+    return StreamingResponse(_stream_assistant_response(prompt, model), media_type="text/plain")
+
+
+@app.post("/api/ideation/generate")
+def generate_ideation(request: IdeationRequest) -> dict[str, str]:
+    payload = _load_context()
+    action = request.action
+    if action == "extract_requests":
+        prompt = textwrap.dedent(
+            f"""
+            Review the pasted YouTube comments for Ralskies and extract likely fan song requests.
+            Return:
+            1. A deduplicated list of requested songs or artists
+            2. The most repeated request themes
+            3. Which request seems strongest for retention potential
+            4. One suggested 'Ralskies spin' for the top request
+
+            Comments:
+            {request.comment_dump}
+            """
+        ).strip()
+    elif action == "fan_request_spin":
+        prompt = build_coach_prompt(request.fan_request or request.topic, request.working_title, "fan_request_spin")
+    else:
+        prompt = build_coach_prompt(request.topic, request.working_title, action)
+    response = _assistant_response(prompt, payload["settings"].get("ollama_model", "gemma"))
+    return {"content": response or "A.R.I.A. could not generate an ideation response."}
+
+
+@app.post("/api/ideation/score")
+def score_ideation(request: IdeationRequest) -> dict[str, Any]:
+    calendar_df = load_calendar()
+    keywords = build_keyword_opportunity_df(request.topic, request.working_title, calendar_df)
+    scorecard = build_title_scorecard(request.working_title, request.topic)
+    return _json_safe(
+        {
+            "keywords": keywords,
+            "scorecard": [{"label": label, "value": value} for label, value in scorecard],
+        }
+    )
 
 
 @app.get("/api/vault")

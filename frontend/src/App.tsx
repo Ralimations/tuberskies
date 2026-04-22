@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   askAria,
+  askAriaStream,
   coachRepertoire,
   draftComment,
   draftMetadata,
+  generateIdeation,
   loadBootstrap,
   loadComments,
   loadCreatorActions,
@@ -13,10 +15,11 @@ import {
   publishComment,
   publishMetadata,
   saveRepertoire,
-  saveVault
+  saveVault,
+  scoreIdeation
 } from "./api";
 import { Icon } from "./icons";
-import type { BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, NavItem, RepertoirePayload, VaultPayload } from "./types";
+import type { BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, NavItem, RepertoirePayload, VaultPayload } from "./types";
 
 const fallbackData: BootstrapPayload = {
   navigation: [
@@ -96,7 +99,7 @@ export function App() {
         {path === "/creator-actions" ? <CreatorActionsPage /> : null}
         {path === "/upload-lab" ? <UploadLabPage data={data} /> : null}
         {path === "/pattern-memory" ? <PatternPage data={data} /> : null}
-        {path === "/ideation" ? <WorkspacePage title="Ideation" data={data} mode="ideation" /> : null}
+        {path === "/ideation" ? <IdeationPage /> : null}
         {path === "/repertoire" ? <RepertoirePage data={data} /> : null}
         {path === "/shorts" ? <WorkspacePage title="Shorts Architect" data={data} mode="shorts" /> : null}
         {path === "/vault" ? <VaultPage /> : null}
@@ -147,6 +150,7 @@ function AskPage({ data }: { data: BootstrapPayload }) {
   ]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [responseStarted, setResponseStarted] = useState(false);
 
   async function submitMessage(message: string) {
     const clean = message.trim();
@@ -155,22 +159,41 @@ function AskPage({ data }: { data: BootstrapPayload }) {
     if (latestUser?.content === clean) return;
 
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: clean }];
-    setMessages(nextMessages);
+    const assistantIndex = nextMessages.length;
+    setMessages([...nextMessages, { role: "assistant", content: "" }]);
     setDraft("");
     setThinking(true);
+    setResponseStarted(false);
+    let accumulated = "";
     try {
-      const response = await askAria(clean, nextMessages);
-      setMessages([...nextMessages, response]);
+      await askAriaStream(clean, nextMessages, (chunk) => {
+        accumulated += chunk;
+        setResponseStarted(true);
+        setMessages((current) =>
+          current.map((item, index) => (index === assistantIndex ? { role: "assistant", content: accumulated } : item))
+        );
+      });
+      if (!accumulated.trim()) {
+        setMessages((current) =>
+          current.map((item, index) =>
+            index === assistantIndex ? { role: "assistant", content: "A.R.I.A. did not return a response. Check Ollama, then try again." } : item
+          )
+        );
+      }
     } catch (error) {
-      setMessages([
-        ...nextMessages,
-        {
-          role: "assistant",
-          content: error instanceof Error ? error.message : "A.R.I.A. could not respond."
-        }
-      ]);
+      try {
+        const response = await askAria(clean, nextMessages);
+        setMessages([...nextMessages, response]);
+      } catch {
+        setMessages((current) =>
+          current.map((item, index) =>
+            index === assistantIndex ? { role: "assistant", content: error instanceof Error ? error.message : "A.R.I.A. could not respond." } : item
+          )
+        );
+      }
     } finally {
       setThinking(false);
+      setResponseStarted(false);
     }
   }
 
@@ -196,20 +219,27 @@ function AskPage({ data }: { data: BootstrapPayload }) {
         {messages.map((message, index) => (
           <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
             <div className="avatar">{message.role === "assistant" ? "A" : "R"}</div>
-            <p>{message.content}</p>
+            <p>
+              {message.content || (message.role === "assistant" && thinking ? (
+                <span className="thinking-inline">
+                  <span className="typing-dot" />
+                  A.R.I.A. is reading your analytics...
+                </span>
+              ) : "")}
+            </p>
           </article>
         ))}
         {thinking ? (
-          <article className="message assistant">
-            <div className="avatar">A</div>
-            <p>Reading the latest channel context...</p>
-          </article>
+          <div className="generation-status">
+            <span className="spinner" />
+            <strong>{responseStarted ? "A.R.I.A. is writing..." : "A.R.I.A. is generating..."}</strong>
+          </div>
         ) : null}
       </div>
       <form className="composer" onSubmit={onSubmit}>
         <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask A.R.I.A. about your analytics..." />
         <button type="submit" disabled={thinking}>
-          Ask
+          {thinking ? "Wait" : "Ask"}
         </button>
       </form>
     </section>
@@ -268,6 +298,130 @@ function PatternPage({ data }: { data: BootstrapPayload }) {
       <Panel title="Latest Snapshot">
         <pre>{JSON.stringify(data.patternMemory ?? {}, null, 2)}</pre>
       </Panel>
+    </section>
+  );
+}
+
+const ideationActions = [
+  ["title_pack", "Title Pack"],
+  ["hook_pack", "Hook Pack"],
+  ["description_tags", "Description + Tags"],
+  ["content_brief", "Content Brief"],
+  ["fan_request_spin", "Ralskies Spin"]
+] as const;
+
+function IdeationPage() {
+  const [topic, setTopic] = useState("");
+  const [workingTitle, setWorkingTitle] = useState("");
+  const [action, setAction] = useState("title_pack");
+  const [fanRequest, setFanRequest] = useState("");
+  const [commentDump, setCommentDump] = useState("");
+  const [output, setOutput] = useState("");
+  const [lastAction, setLastAction] = useState("No generation yet.");
+  const [score, setScore] = useState<IdeationScorePayload>({ keywords: [], scorecard: [] });
+  const [status, setStatus] = useState("");
+
+  async function refreshScore(nextTopic = topic, nextTitle = workingTitle) {
+    if (!nextTopic.trim() && !nextTitle.trim()) {
+      setScore({ keywords: [], scorecard: [] });
+      return;
+    }
+    try {
+      const result = await scoreIdeation(nextTopic, nextTitle);
+      setScore(result);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Keyword scoring failed.");
+    }
+  }
+
+  async function runGeneration(nextAction = action) {
+    setStatus("A.R.I.A. is shaping the concept...");
+    setOutput("");
+    try {
+      const result = await generateIdeation({
+        topic,
+        working_title: workingTitle,
+        action: nextAction,
+        fan_request: fanRequest,
+        comment_dump: commentDump
+      });
+      setOutput(result.content);
+      setLastAction(ideationActions.find(([key]) => key === nextAction)?.[1] ?? "Comment Request Extraction");
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Generation failed.");
+    }
+  }
+
+  function onTopicChange(value: string) {
+    setTopic(value);
+    refreshScore(value, workingTitle);
+  }
+
+  function onTitleChange(value: string) {
+    setWorkingTitle(value);
+    refreshScore(topic, value);
+  }
+
+  return (
+    <section className="page-stack">
+      <SectionHeader title="Ideation" copy="Develop covers, originals, and fan-requested songs into stronger theatrical concepts with A.R.I.A." />
+      {status ? <div className="status">{status}</div> : null}
+      <div className="grid two-col">
+        <Panel title="Concept Builder">
+          <div className="form-grid">
+            <label className="field">
+              <span>Song concept, niche direction, or cover idea</span>
+              <textarea value={topic} onChange={(event) => onTopicChange(event.target.value)} rows={6} placeholder="male version of Pretty Little Baby with a softer Broadway ballad treatment" />
+            </label>
+            <label className="field">
+              <span>Working title</span>
+              <input value={workingTitle} onChange={(event) => onTitleChange(event.target.value)} placeholder="Pretty Little Baby (Male Version)" />
+            </label>
+            <label className="field">
+              <span>Generation mode</span>
+              <select value={action} onChange={(event) => setAction(event.target.value)}>
+                {ideationActions.map(([key, label]) => <option value={key} key={key}>{label}</option>)}
+              </select>
+            </label>
+            <div className="button-row">
+              <button className="primary" onClick={() => runGeneration(action)}>Ask A.R.I.A.</button>
+              <button onClick={() => { setOutput(""); setLastAction("Output cleared."); }}>Clear Output</button>
+            </div>
+          </div>
+        </Panel>
+        <Panel title="Keyword + Packaging Desk">
+          <div className="score-list">
+            {score.scorecard.length ? score.scorecard.map((item) => <InfoRow key={item.label} label={item.label} value={item.value} />) : <p>Add a topic or title to score packaging strength.</p>}
+          </div>
+          <DataTable rows={score.keywords} columns={["keyword", "demand", "competition", "channel_fit", "score"]} />
+        </Panel>
+      </div>
+      <div className="grid two-col">
+        <Panel title="Request Signals">
+          <div className="form-grid">
+            <label className="field">
+              <span>Ko-fi / Fanskies request dropbox</span>
+              <textarea value={fanRequest} onChange={(event) => setFanRequest(event.target.value)} rows={4} placeholder="Paste song requests here..." />
+            </label>
+            <label className="field">
+              <span>Comments / request extraction inbox</span>
+              <textarea value={commentDump} onChange={(event) => setCommentDump(event.target.value)} rows={6} placeholder="Paste YouTube comments here..." />
+            </label>
+            <div className="button-row">
+              <button onClick={() => runGeneration("fan_request_spin")}>Fan Request Spin</button>
+              <button onClick={() => runGeneration("extract_requests")}>Extract Requests</button>
+            </div>
+          </div>
+        </Panel>
+        <Panel title="Output Desk">
+          <pre>{output || "Generated ideas will appear here."}</pre>
+          <div className="info-row">
+            <span>Last Action</span>
+            <strong>{lastAction}</strong>
+          </div>
+        </Panel>
+      </div>
     </section>
   );
 }

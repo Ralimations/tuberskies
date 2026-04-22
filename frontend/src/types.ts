@@ -89,3 +89,8 @@ export type CommentRow = {
   already_replied?: boolean;
   reply_count?: number;
 };
+
+export type IdeationScorePayload = {
+  keywords: Record<string, unknown>[];
+  scorecard: { label: string; value: string }[];
+};
