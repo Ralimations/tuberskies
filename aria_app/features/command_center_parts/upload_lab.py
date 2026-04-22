@@ -68,15 +68,7 @@ def render_upload_lab(video_df: pd.DataFrame, upload_message: str) -> None:
         ["Summary First", "History On Demand", "Radar Ready"],
     )
 
-    st.markdown('<div class="subnav-wrap">', unsafe_allow_html=True)
-    upload_section = st.segmented_control(
-        "Upload Lab Section",
-        options=["Summary", "History", "Momentum", "Radar"],
-        default="Summary",
-        key="upload_lab_section",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    upload_section = st.session_state.upload_lab_section
     st.markdown('<div class="compact-note">Professional dashboards keep one decision surface visible at a time. This workspace now does the same.</div>', unsafe_allow_html=True)
 
     if upload_section == "Summary":

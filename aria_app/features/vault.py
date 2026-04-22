@@ -39,7 +39,7 @@ def render_vault() -> None:
         youtube_api_key = st.text_input("YouTube API Key", value=vault.get("youtube_api_key", ""), type="password", placeholder="Leave blank for now")
         youtube_client_id = st.text_input("YouTube Client ID", value=vault.get("youtube_client_id", ""), type="password", placeholder="Leave blank for now")
         youtube_client_secret = st.text_input("YouTube Client Secret", value=vault.get("youtube_client_secret", ""), type="password", placeholder="Leave blank for now")
-        render_editorial_list("Setup Notes", [("Privacy", "Local-first by default"), ("Live Data", "Now supports local OAuth and YouTube Analytics pulls"), ("Model Runtime", "Depends on your local Ollama install")])
+        render_editorial_list("Setup Notes", [("Privacy", "Local-first by default"), ("Live Data", "Supports local OAuth and YouTube Analytics pulls"), ("Creator Actions", "Clear and reauthorize if your token predates metadata/comment tools"), ("Model Runtime", "Depends on your local Ollama install")])
         auth_col1, auth_col2 = st.columns(2)
         if auth_col1.button("Authorize YouTube", use_container_width=True):
             try:

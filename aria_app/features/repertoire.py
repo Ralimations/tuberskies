@@ -9,6 +9,7 @@ import streamlit as st
 
 from aria_app.ai import stream_ollama_response
 from aria_app.ui import (
+    render_editorial_list,
     render_insight_card,
     render_panel_header,
     render_section_header,
@@ -85,23 +86,15 @@ def render_repertoire_stage_board(df: pd.DataFrame) -> None:
                 for _, row in stage_rows.iterrows():
                     target = row["target_upload_date"].strftime("%Y-%m-%d") if pd.notna(row["target_upload_date"]) else "Unscheduled"
                     pillar = row["content_pillar"] or "Unlabeled"
-                    cards_html += f"""
-                    <div class="song-card">
-                        <div class="song-card-title">{row['title']}</div>
-                        <div class="song-card-meta">{row['priority']} priority</div>
-                        <div class="song-card-meta">{pillar}</div>
-                        <div class="song-card-meta">{target}</div>
-                    </div>
-                    """
-            st.markdown(
-                f"""
-                <div class="board-lane">
-                    <div class="board-lane-title">{stage}</div>
-                    {cards_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                    cards_html += (
+                        '<div class="song-card">'
+                        f'<div class="song-card-title">{row["title"]}</div>'
+                        f'<div class="song-card-meta">{row["priority"]} priority</div>'
+                        f'<div class="song-card-meta">{pillar}</div>'
+                        f'<div class="song-card-meta">{target}</div>'
+                        '</div>'
+                    )
+            st.markdown(f'<div class="board-lane"><div class="board-lane-title">{stage}</div>{cards_html}</div>', unsafe_allow_html=True)
 
 
 def render_timeline_chart(df: pd.DataFrame) -> None:
@@ -211,59 +204,87 @@ def render_timeline_planner(df: pd.DataFrame) -> None:
             st.session_state.calendar_coach_context = "A.R.I.A. Timeline Planner"
 
 
-def render_repertoire() -> None:
-    render_section_header("Production", "Repertoire", "Keep every song moving from first spark to final upload, with workflow pressure and release timing always in view.")
-
-    today = pd.Timestamp(date.today())
-    default_due = today + pd.Timedelta(days=7)
-    quick_add_col1, quick_add_col2, quick_add_col3, quick_add_col4, quick_add_col5 = st.columns([1.35, 0.95, 0.85, 1, 0.8])
-    quick_title = quick_add_col1.text_input("Quick add title", placeholder="New song or cover idea")
-    quick_stage = quick_add_col2.selectbox("Quick stage", options=STAGES, index=0)
-    quick_priority = quick_add_col3.selectbox("Priority", options=PRIORITIES, index=1)
-    quick_date = quick_add_col4.date_input("Target date", value=default_due.to_pydatetime())
-    quick_pillar = quick_add_col5.text_input("Pillar", placeholder="Epic Cover")
-    add_project = st.button("Add Song")
-    if add_project and quick_title.strip():
-        new_row = pd.DataFrame([{"title": quick_title.strip(), "stage": quick_stage, "priority": quick_priority, "content_pillar": quick_pillar.strip(), "target_upload_date": pd.Timestamp(quick_date), "notes": ""}])
-        st.session_state.calendar_df = pd.concat([st.session_state.calendar_df, new_row], ignore_index=True)
-        save_calendar(st.session_state.calendar_df)
-        st.success("Song added to your local repertoire.")
-
-    edited_df = st.data_editor(
-        st.session_state.calendar_df,
-        use_container_width=True,
-        num_rows="dynamic",
-        hide_index=True,
-        column_config={
-            "title": st.column_config.TextColumn("Song / Video Title", required=True, width="medium"),
-            "stage": st.column_config.SelectboxColumn("Stage", options=STAGES, required=True),
-            "priority": st.column_config.SelectboxColumn("Priority", options=PRIORITIES, required=True),
-            "content_pillar": st.column_config.TextColumn("Pillar", width="small"),
-            "target_upload_date": st.column_config.DateColumn("Target Upload Date", format="YYYY-MM-DD"),
-            "notes": st.column_config.TextColumn("Notes", width="large"),
-        },
-        key="content_calendar_editor",
-    )
-    edited_df = normalize_calendar_df(edited_df)
-
+def render_repertoire_header_metrics(edited_df: pd.DataFrame, today: pd.Timestamp) -> None:
     stage_counts = edited_df["stage"].value_counts().reindex(STAGES, fill_value=0)
-    due_soon = edited_df[edited_df["target_upload_date"].notna() & (edited_df["target_upload_date"] >= today) & (edited_df["target_upload_date"] <= today + pd.Timedelta(days=14))].sort_values("target_upload_date")
+    due_soon = edited_df[
+        edited_df["target_upload_date"].notna()
+        & (edited_df["target_upload_date"] >= today)
+        & (edited_df["target_upload_date"] <= today + pd.Timedelta(days=14))
+    ].sort_values("target_upload_date")
     ready_count = int(stage_counts.get("Upload", 0))
     top_row1, top_row2, top_row3 = st.columns(3)
     with top_row1:
         render_insight_card("Total Songs", f"{len(edited_df):,}", "All active concepts currently in the local repertoire.")
     with top_row2:
-        render_insight_card("Ready to Upload", str(ready_count), "Songs that are ready for release scheduling.")
+        render_insight_card("Ready to Upload", str(ready_count), "Songs ready for release scheduling.")
     with top_row3:
         render_insight_card("Due in 14 Days", f"{len(due_soon):,}", "Upcoming deadlines worth protecting this week.")
 
-    render_panel_header("Visual Board", "Scan the current repertoire by stage before dropping into the detailed editor and planning tools.")
-    render_repertoire_stage_board(edited_df)
 
+def render_quick_add_song(today: pd.Timestamp) -> None:
+    with st.expander("Add or edit songs", expanded=False):
+        default_due = today + pd.Timedelta(days=7)
+        quick_add_col1, quick_add_col2, quick_add_col3, quick_add_col4, quick_add_col5 = st.columns([1.35, 0.95, 0.85, 1, 0.8])
+        quick_title = quick_add_col1.text_input("Quick add title", placeholder="New song or cover idea")
+        quick_stage = quick_add_col2.selectbox("Quick stage", options=STAGES, index=0)
+        quick_priority = quick_add_col3.selectbox("Priority", options=PRIORITIES, index=1)
+        quick_date = quick_add_col4.date_input("Target date", value=default_due.to_pydatetime())
+        quick_pillar = quick_add_col5.text_input("Pillar", placeholder="Epic Cover")
+        if st.button("Add Song"):
+            if quick_title.strip():
+                new_row = pd.DataFrame(
+                    [
+                        {
+                            "title": quick_title.strip(),
+                            "stage": quick_stage,
+                            "priority": quick_priority,
+                            "content_pillar": quick_pillar.strip(),
+                            "target_upload_date": pd.Timestamp(quick_date),
+                            "notes": "",
+                        }
+                    ]
+                )
+                st.session_state.calendar_df = pd.concat([st.session_state.calendar_df, new_row], ignore_index=True)
+                save_calendar(st.session_state.calendar_df)
+                st.success("Song added to your local repertoire.")
+            else:
+                st.warning("Add a title before saving a new song.")
+
+        edited_df = st.data_editor(
+            st.session_state.calendar_df,
+            use_container_width=True,
+            num_rows="dynamic",
+            hide_index=True,
+            column_config={
+                "title": st.column_config.TextColumn("Song / Video Title", required=True, width="medium"),
+                "stage": st.column_config.SelectboxColumn("Stage", options=STAGES, required=True),
+                "priority": st.column_config.SelectboxColumn("Priority", options=PRIORITIES, required=True),
+                "content_pillar": st.column_config.TextColumn("Pillar", width="small"),
+                "target_upload_date": st.column_config.DateColumn("Target Upload Date", format="YYYY-MM-DD"),
+                "notes": st.column_config.TextColumn("Notes", width="large"),
+            },
+            key="content_calendar_editor",
+        )
+        edited_df = normalize_calendar_df(edited_df)
+        col1, col2 = st.columns([1, 1.5])
+        if col1.button("Save Repertoire"):
+            st.session_state.calendar_df = edited_df
+            save_calendar(edited_df)
+            st.success("Repertoire saved locally.")
+        if col2.button("Autosave Current Table"):
+            st.session_state.calendar_df = edited_df
+            save_calendar(edited_df)
+            st.success("Current repertoire state saved.")
+
+
+def render_repertoire_overview(edited_df: pd.DataFrame) -> None:
+    stage_counts = edited_df["stage"].value_counts().reindex(STAGES, fill_value=0)
+    render_panel_header("Visual Board", "Scan the current repertoire by stage, then drop into coaching or schedule pressure only when needed.")
+    render_repertoire_stage_board(edited_df)
     left, right = st.columns([1.2, 1])
     with left:
-        stage_chart = px.bar(x=stage_counts.index, y=stage_counts.values, labels={"x": "Repertoire Stage", "y": "Songs"}, title="Repertoire Load", template="plotly_white")
-        stage_chart.update_traces(marker_color="#4DB8FF")
+        stage_chart = px.bar(x=stage_counts.index, y=stage_counts.values, labels={"x": "Repertoire Stage", "y": "Songs"}, title="Repertoire Load", template="plotly_dark")
+        stage_chart.update_traces(marker_color="#2d7df0")
         stage_chart.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(26,34,53,0.65)",
@@ -274,36 +295,25 @@ def render_repertoire() -> None:
         stage_chart.update_yaxes(gridcolor="rgba(237,242,255,0.08)")
         st.plotly_chart(stage_chart, use_container_width=True)
     with right:
-        st.markdown("### Upcoming Deadlines")
-        if due_soon.empty:
-            st.info("No songs due in the next 14 days.")
-        else:
-            st.dataframe(due_soon[["title", "stage", "target_upload_date"]], use_container_width=True, hide_index=True)
+        stage_rows = [(stage, f"{int(stage_counts.get(stage, 0))} song(s)") for stage in STAGES]
+        render_editorial_list("Stage Load", stage_rows)
 
-    st.markdown('<div class="subnav-wrap">', unsafe_allow_html=True)
-    active_section = st.segmented_control(
-        "Repertoire Section",
-        options=["Idea Board", "Timeline", "A.R.I.A. Notes"],
-        default="Idea Board",
-        key="repertoire_section",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+
+def render_repertoire() -> None:
+    render_section_header("Production", "Repertoire", "Keep every song moving from first spark to final upload, with workflow pressure and release timing always in view.")
+
+    today = pd.Timestamp(date.today())
+    edited_df = normalize_calendar_df(st.session_state.calendar_df)
+    render_repertoire_header_metrics(edited_df, today)
+    render_quick_add_song(today)
+
+    active_section = st.session_state.repertoire_section
 
     if active_section == "Idea Board":
+        render_repertoire_overview(edited_df)
         render_idea_board(edited_df)
     elif active_section == "Timeline":
         render_timeline_planner(edited_df)
     else:
         st.markdown(f"### {st.session_state.calendar_coach_context}")
         st.text_area("Latest Coach Feedback", value=st.session_state.calendar_coach_output, height=260, placeholder="Run song or timeline coaching to keep suggestions here.")
-
-    action_col1, action_col2 = st.columns([1, 1.5])
-    if action_col1.button("Save Repertoire"):
-        st.session_state.calendar_df = edited_df
-        save_calendar(edited_df)
-        st.success("Repertoire saved locally.")
-    if action_col2.button("Autosave Current Table"):
-        st.session_state.calendar_df = edited_df
-        save_calendar(edited_df)
-        st.success("Current repertoire state saved.")

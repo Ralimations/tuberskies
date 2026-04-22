@@ -16,7 +16,6 @@ from aria_app.features.command_center_parts.analytics import (
     build_analytics_chart,
     get_alert_rows,
     render_creator_hero,
-    render_dashboard_snapshot,
 )
 from aria_app.features.command_center_parts.upload_lab import build_upload_takeaways, render_upload_lab
 from aria_app.features.command_center_parts.pattern_view import render_pattern_memory
@@ -30,6 +29,7 @@ from youtube_client import (
     authorize_youtube_analytics,
     has_saved_token,
 )
+from aria_app.features.command_center_parts.action_feed import build_action_feed_cards, render_action_feed
 
 def render_command_center() -> None:
     force_refresh = bool(st.session_state.pop("force_youtube_cache_refresh", False))
@@ -102,64 +102,27 @@ def render_command_center() -> None:
     if analytics_df["ctr"].notna().any():
         metric_options.insert(0, "ctr")
 
-    command_sections = ["Dashboard", "Today Desk", "Analytics", "Channel Audit", "Publish Timing", "Pattern Memory", "Upload Lab"]
+    command_sections = ["Dashboard", "Analytics", "Pattern Memory", "Upload Lab"]
     if st.session_state.get("command_center_section") == "Overview":
+        st.session_state.command_center_section = "Analytics"
+    if st.session_state.get("command_center_section") in {"Today Desk", "Channel Audit", "Publish Timing"}:
         st.session_state.command_center_section = "Analytics"
     if st.session_state.get("command_center_section") not in command_sections:
         st.session_state.command_center_section = "Dashboard"
 
-    st.markdown('<div class="subnav-wrap">', unsafe_allow_html=True)
-    active_section = st.segmented_control(
-        "Command Center Section",
-        options=command_sections,
-        default="Dashboard",
-        key="command_center_section",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    active_section = st.session_state.command_center_section
 
     if active_section == "Dashboard":
-        render_dashboard_snapshot(analytics_df, video_df, st.session_state.calendar_df)
-        return
-
-    if active_section == "Today Desk":
-        render_panel_header("Today Desk", "The one-screen daily brief. This is where A.R.I.A. should feel better than generic creator tools: less noise, clearer action.")
-        row1, row2 = st.columns([1.15, 0.85])
-        with row1:
-            render_insight_card("Best Next Focus", today_payload["focus_title"], today_payload["focus_reason"])
-            render_insight_card("Biggest Current Risk", today_payload["risk_title"], today_payload["risk_reason"])
-        with row2:
-            render_insight_card("Best Opportunity", today_payload["opportunity_title"], today_payload["opportunity_reason"])
-            render_insight_card("Recommended Move Today", "Do This Next", today_payload["today_action"])
-        render_editorial_list(
-            "Daily Checklist",
-            [
-                ("Primary Focus", today_payload["focus_title"]),
-                ("Analytics Check", today_payload["risk_title"]),
-                ("Growth Angle", today_payload["opportunity_title"]),
-                ("Action", today_payload["today_action"]),
-            ],
+        feed_cards = build_action_feed_cards(
+            analytics_df=analytics_df,
+            video_df=video_df,
+            calendar_df=st.session_state.calendar_df,
+            today_payload=today_payload,
+            upload_takeaways=st.session_state.upload_takeaways,
+            using_demo_analytics=using_demo_analytics,
+            live_message=live_message,
         )
-        if st.button("Ask A.R.I.A. for Today's Brief", key="today_desk_brief"):
-            model = st.session_state.vault_settings.get("ollama_model", "gemma")
-            prompt = textwrap.dedent(
-                f"""
-                Build a short daily operating brief for Ralskies.
-                Keep it practical and brief.
-
-                Best next focus: {today_payload["focus_title"]}
-                Focus reason: {today_payload["focus_reason"]}
-                Biggest current risk: {today_payload["risk_title"]}
-                Risk detail: {today_payload["risk_reason"]}
-                Best opportunity: {today_payload["opportunity_title"]}
-                Opportunity detail: {today_payload["opportunity_reason"]}
-                Recommended move today: {today_payload["today_action"]}
-                """
-            ).strip()
-            with st.chat_message("assistant"):
-                response = st.write_stream(stream_ollama_response(prompt, model))
-            st.session_state.calendar_coach_output = response or ""
-            st.session_state.calendar_coach_context = "A.R.I.A. Today Desk"
+        render_action_feed(feed_cards)
         return
 
     if active_section == "Analytics":
@@ -174,7 +137,7 @@ def render_command_center() -> None:
         with left:
             build_analytics_chart(analytics_df, selected_metric)
         with right:
-            render_panel_header("Signal Desk", "A tighter read on what A.R.I.A. should pay attention to before you ask for analysis.")
+            render_panel_header("Analytics Drill-Down", "The report view behind the action feed: trend, audit, timing, and today's recommended move.")
             latest_rows = analytics_df.tail(5).copy()
             latest_rows["date"] = latest_rows["date"].dt.strftime("%Y-%m-%d")
             render_editorial_list(
@@ -193,8 +156,23 @@ def render_command_center() -> None:
                             row["date"].strftime("%Y-%m-%d"),
                             f"CTR {row['ctr']:.2f}% | Retention {row['retention']:.2f}%" if pd.notna(row["ctr"]) else f"Retention {row['retention']:.2f}%",
                         )
-                    )
+                )
                 render_editorial_list("Recent Alert Days", alert_rows)
+            render_editorial_list(
+                "Today Brief",
+                [
+                    ("Primary Focus", today_payload["focus_title"]),
+                    ("Risk", today_payload["risk_title"]),
+                    ("Opportunity", today_payload["opportunity_title"]),
+                    ("Move", today_payload["today_action"]),
+                ],
+            )
+            render_editorial_list("Channel Audit", audit_rows)
+            if timing_df.empty:
+                render_editorial_list("Best Publish Days", [("Status", "Waiting for daily analytics.")])
+            else:
+                top_days = timing_df.sort_values("publish_score", ascending=False).head(3)
+                render_editorial_list("Best Publish Days", [(row["weekday"], f"Score {row['publish_score']:.1f}") for _, row in top_days.iterrows()])
             if st.button("Analyze with A.R.I.A.", key="command_center_coach"):
                 model = st.session_state.vault_settings.get("ollama_model", "gemma")
                 sample = analytics_df[["date", selected_metric]].tail(14).to_csv(index=False)
@@ -212,16 +190,6 @@ def render_command_center() -> None:
                     st.write_stream(stream_ollama_response(prompt, model))
         return
 
-    if active_section == "Channel Audit":
-        render_panel_header("Channel Audit", "A local-first audit board inspired by vidIQ and TubeBuddy scorecards, focused on the signals A.R.I.A. can actually measure.")
-        render_editorial_list("Audit Checklist", audit_rows)
-        low_retention_days = analytics_df[analytics_df["retention"] < 42].tail(5)
-        if low_retention_days.empty:
-            st.success("Retention is not flagging any major weak days right now.")
-        else:
-            st.dataframe(low_retention_days[["date", "views", "retention", "watch_time_hours"]], use_container_width=True, hide_index=True)
-        return
-
     if active_section == "Pattern Memory":
         render_pattern_memory(pattern_snapshot or {})
         return
@@ -230,14 +198,3 @@ def render_command_center() -> None:
         render_upload_lab(video_df if video_df is not None else pd.DataFrame(), video_message)
         return
 
-    render_panel_header("Publish Timing", "A lightweight best-time view inspired by creator tools that rank posting windows from recent channel performance.")
-    if timing_df.empty:
-        st.info("Not enough live data is available yet to rank publish timing.")
-    else:
-        st.dataframe(
-            timing_df.assign(avg_views=timing_df["avg_views"].round(0).astype(int), avg_retention=timing_df["avg_retention"].round(2)),
-            use_container_width=True,
-            hide_index=True,
-        )
-        top_days = timing_df.sort_values("publish_score", ascending=False).head(3)
-        render_editorial_list("Recommended Days", [(row["weekday"], f"Score {row['publish_score']:.1f}") for _, row in top_days.iterrows()])

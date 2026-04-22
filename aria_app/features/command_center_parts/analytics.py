@@ -10,34 +10,9 @@ from aria_app.ui import (
     render_creator_hero,
     render_editorial_list,
     render_insight_card,
-    render_leaderboard_card,
     render_panel_header,
     render_stat_card,
 )
-
-def build_metric_row(df: pd.DataFrame) -> None:
-    if df.empty:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            render_stat_card("Views | Last 30 Days", "--", "Waiting for live YouTube data")
-        with col2:
-            render_stat_card("Subscribers | Last 30 Days", "--", "Waiting for live YouTube data")
-        with col3:
-            render_stat_card("Watch Time | Last 30 Days", "--", "Waiting for live YouTube data")
-        return
-
-    last_30 = df.tail(30)
-    views = int(last_30["views"].fillna(0).sum())
-    subscribers = int(last_30["subscribers_gained"].fillna(0).sum())
-    watch_time_hours = int(round(last_30["watch_time_hours"].fillna(0).sum()))
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        render_stat_card("Views | Last 30 Days", f"{views:,}", "Rolling total from live channel analytics")
-    with col2:
-        render_stat_card("Subscribers | Last 30 Days", f"{subscribers:,}", "Subscribers gained across the last 30 days")
-    with col3:
-        render_stat_card("Watch Time | Last 30 Days", f"{watch_time_hours:,}", "Estimated watch time hours from live analytics")
-
 
 def build_creator_hero_stats(
     analytics_df: pd.DataFrame,
@@ -65,84 +40,6 @@ def build_creator_hero_stats(
     ]
 
 
-def render_dashboard_snapshot(analytics_df: pd.DataFrame, video_df: pd.DataFrame | None, calendar_df: pd.DataFrame) -> None:
-    render_panel_header(
-        "Macro Pulse",
-        "A broad read on channel health, audience response, upload performance, and production pressure before any drill-down.",
-    )
-    build_metric_row(analytics_df)
-    build_health_snapshot(analytics_df)
-
-    left, center, right = st.columns([1.25, 0.95, 0.9])
-    with left:
-        build_analytics_chart(analytics_df, "views")
-    with center:
-        if video_df is not None and not video_df.empty:
-            upload_rows = []
-            for _, row in video_df.head(6).iterrows():
-                upload_rows.append((str(row["title"])[:44], f"{int(row['views']):,} views"))
-            render_leaderboard_card("Top Uploads", upload_rows, dense=False)
-        else:
-            render_leaderboard_card(
-                "Top Uploads",
-                [("Connect YouTube Analytics", "upload data"), ("Then return here", "ranked history")],
-                dense=False,
-            )
-        alerts = get_alert_rows(analytics_df).head(4)
-        render_editorial_list(
-            "Signal Alerts",
-            [
-                (
-                    row["date"].strftime("%Y-%m-%d"),
-                    f"Retention {row['retention']:.1f}%",
-                )
-                for _, row in alerts.iterrows()
-            ]
-            or [("Status", "No major retention alerts in the current view.")],
-        )
-    with right:
-        stage_counts = calendar_df["stage"].value_counts().to_dict() if calendar_df is not None and not calendar_df.empty else {}
-        render_editorial_list(
-            "Production Pipeline",
-            [
-                ("Ideas", str(stage_counts.get("Song Idea", 0))),
-                ("Prep", str(stage_counts.get("Instrumental Prep", 0))),
-                ("Recording", str(stage_counts.get("BandLab Recording", 0))),
-                ("Editing", str(stage_counts.get("Video Editing", 0))),
-                ("Upload Ready", str(stage_counts.get("Upload", 0))),
-            ],
-        )
-        timing_df = build_publish_timing_table(analytics_df)
-        if timing_df.empty:
-            render_editorial_list("Best Publish Days", [("Status", "Waiting for daily analytics.")])
-        else:
-            top_days = timing_df.sort_values("publish_score", ascending=False).head(3)
-            render_editorial_list("Best Publish Days", [(row["weekday"], f"Score {row['publish_score']:.1f}") for _, row in top_days.iterrows()])
-
-
-def build_health_snapshot(df: pd.DataFrame) -> None:
-    latest = df.tail(7)
-    previous = df.tail(14).head(7)
-    if latest.empty or previous.empty:
-        return
-
-    has_ctr = df["ctr"].notna().any()
-    ctr_delta = latest["ctr"].mean() - previous["ctr"].mean() if has_ctr else None
-    retention_delta = latest["retention"].mean() - previous["retention"].mean()
-    views_delta = latest["views"].sum() - previous["views"].sum()
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if has_ctr:
-            render_insight_card("CTR Momentum", f"{latest['ctr'].mean():.2f}%", f"{ctr_delta:+.2f} pts versus the previous 7-day window.")
-        else:
-            render_insight_card("CTR Momentum", "Unavailable", "CTR is not returned by the current live YouTube Analytics query.")
-    with col2:
-        render_insight_card("Retention Momentum", f"{latest['retention'].mean():.2f}%", f"{retention_delta:+.2f} pts versus the previous 7-day window.")
-    with col3:
-        render_insight_card("Views Momentum", f"{latest['views'].sum():,}", f"{views_delta:+,} views compared with the previous 7 days.")
-
-
 def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
     if df.empty or metric_name not in df.columns:
         st.info("No live analytics are available for this chart yet.")
@@ -160,21 +57,21 @@ def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
         y=metric_name,
         markers=True,
         title=f"{labels[metric_name]} Over Time",
-        template="plotly_white",
+        template="plotly_dark",
     )
-    chart.update_traces(line=dict(color="#176b87", width=2.4), marker=dict(size=4, color="#176b87"))
+    chart.update_traces(line=dict(color="#2d7df0", width=2.4), marker=dict(size=4, color="#2d7df0"))
     chart.update_layout(
         height=380,
         margin=dict(l=18, r=18, t=52, b=18),
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
-        font=dict(color="#141516", family="Inter, Segoe UI, Arial, sans-serif"),
-        title_font=dict(family="Inter, Segoe UI, Arial, sans-serif", size=17, color="#141516"),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#151922",
+        font=dict(color="#f6f7fb", family="Inter, Segoe UI, Arial, sans-serif"),
+        title_font=dict(family="Inter, Segoe UI, Arial, sans-serif", size=17, color="#f6f7fb"),
         xaxis_title=None,
         yaxis_title=None,
     )
-    chart.update_xaxes(showgrid=False, linecolor="#dedfda", tickfont=dict(color="#6b706f"))
-    chart.update_yaxes(gridcolor="#ecece7", zeroline=False, tickfont=dict(color="#6b706f"))
+    chart.update_xaxes(showgrid=False, linecolor="#252b37", tickfont=dict(color="#a7afbf"))
+    chart.update_yaxes(gridcolor="#252b37", zeroline=False, tickfont=dict(color="#a7afbf"))
     st.plotly_chart(chart, use_container_width=True)
 
 

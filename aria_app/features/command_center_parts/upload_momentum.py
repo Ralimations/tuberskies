@@ -187,15 +187,7 @@ def render_momentum_planner(video_df: pd.DataFrame, settings: dict[str, str]) ->
         top_video = monthly_df.sort_values("engagement_score", ascending=False).iloc[0]
         render_insight_card("Top Upload", str(top_video["title"]), f"Score {top_video['engagement_score']:.1f} | {int(top_video['views']):,} views")
 
-    st.markdown('<div class="subnav-wrap">', unsafe_allow_html=True)
-    momentum_section = st.segmented_control(
-        "Momentum Workspace",
-        options=["Snapshot", "Scoreboards", "Trend Watch"],
-        default="Snapshot",
-        key="momentum_workspace_section",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    momentum_section = st.session_state.momentum_workspace_section
 
     if momentum_section == "Snapshot":
         left, right = st.columns([1.2, 0.8])

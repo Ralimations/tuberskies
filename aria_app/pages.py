@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from aria_app.features.command_center import render_command_center
+from aria_app.features.creator_actions import render_creator_actions
 from aria_app.features.niche_lab import render_niche_lab
 from aria_app.features.repertoire import render_repertoire
 from aria_app.features.shorts_view import render_shorts_architect
@@ -23,6 +24,7 @@ APP_PAGES: tuple[AppPage, ...] = tuple(
         PAGE_LABELS,
         (
             render_command_center,
+            render_creator_actions,
             render_niche_lab,
             render_repertoire,
             render_shorts_architect,

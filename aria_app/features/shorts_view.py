@@ -9,17 +9,37 @@ from aria_app.ui import render_editorial_list, render_insight_card, render_panel
 from shorts_architect import SHORTS_OUTPUT_DIR, analyze_video_pipeline, render_shorts, save_uploaded_file
 
 
+def _shorts_status_items() -> list[tuple[str, str]]:
+    transcript_ready = st.session_state.transcription_data is not None and not st.session_state.transcription_data.empty
+    return [
+        ("Transcript", "Ready" if transcript_ready else "Missing"),
+        ("Main Video", "Loaded" if st.session_state.shorts_main_video_path else "Missing"),
+        ("B-Roll", "Loaded" if st.session_state.shorts_broll_video_path else "Optional"),
+        ("Exports", str(len(st.session_state.shorts_outputs))),
+    ]
+
+
+def _render_detected_segments() -> None:
+    if not st.session_state.shorts_segments:
+        return
+    segment_df = pd.DataFrame(st.session_state.shorts_segments)
+    avg_duration = (segment_df["end"] - segment_df["start"]).mean() if {"start", "end"}.issubset(segment_df.columns) else 0
+    transcript_rows = len(st.session_state.transcription_data) if st.session_state.transcription_data is not None else 0
+    stat_col1, stat_col2, stat_col3 = st.columns(3)
+    with stat_col1:
+        render_insight_card("Candidate Moments", f"{len(segment_df):,}", "High-energy sections queued for Shorts.")
+    with stat_col2:
+        render_insight_card("Average Length", f"{avg_duration:.1f}s", "Balanced between hook density and replay value.")
+    with stat_col3:
+        render_insight_card("Transcript Lines", f"{transcript_rows:,}", "Editable caption lines ready for cleanup.")
+    st.markdown("### Detected Viral Windows")
+    st.dataframe(segment_df, use_container_width=True, hide_index=True)
+
+
 def render_shorts_architect() -> None:
     render_section_header("Vertical Video", "The Shorts Architect", "Upload a long-form performance, detect high-energy moments, refine the lyrics, and render vertical Shorts locally.")
-    st.markdown('<div class="subnav-wrap">', unsafe_allow_html=True)
-    active_section = st.segmented_control(
-        "Shorts Section",
-        options=["Ingest", "Cutting Room", "Render"],
-        default="Ingest",
-        key="shorts_section",
-        label_visibility="collapsed",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
+    active_section = st.session_state.shorts_section
+    render_status_strip(_shorts_status_items())
 
     if active_section == "Ingest":
         render_panel_header("Step 1: Ingestion & Analysis", "Upload the performance master, optionally add B-roll, and let A.R.I.A. find the strongest music moments.")
@@ -51,26 +71,15 @@ def render_shorts_architect() -> None:
                         st.error(f"Shorts analysis failed: {error}")
         if st.session_state.shorts_analysis_error:
             st.warning(st.session_state.shorts_analysis_error)
-        if st.session_state.shorts_segments:
-            segment_df = pd.DataFrame(st.session_state.shorts_segments)
-            avg_duration = (segment_df["end"] - segment_df["start"]).mean() if {"start", "end"}.issubset(segment_df.columns) else 0
-            transcript_rows = len(st.session_state.transcription_data) if st.session_state.transcription_data is not None else 0
-            stat_col1, stat_col2, stat_col3 = st.columns(3)
-            with stat_col1:
-                render_insight_card("Candidate Moments", f"{len(segment_df):,}", "High-energy sections currently queued for Shorts.")
-            with stat_col2:
-                render_insight_card("Average Length", f"{avg_duration:.1f}s", "Balanced between hook density and replay value.")
-            with stat_col3:
-                render_insight_card("Transcript Lines", f"{transcript_rows:,}", "Editable lyric or caption lines ready for cleanup.")
-            st.markdown("### Detected Viral Windows")
-            st.dataframe(segment_df, use_container_width=True, hide_index=True)
+        _render_detected_segments()
         return
 
     if active_section == "Cutting Room":
         if st.session_state.transcription_data is None or st.session_state.transcription_data.empty:
-            st.info("Analyze a performance video in the Ingest section to unlock The Cutting Room.")
+            st.info("Analyze a performance video in Ingest to unlock The Cutting Room.")
             return
         render_panel_header("Step 2: The Cutting Room", "Refine the transcript, choose the caption styling, and set the short layout before rendering.")
+        _render_detected_segments()
         cutting_room_col, style_col = st.columns([1.55, 1])
         display_df = st.session_state.transcription_data[["segment_id", "start_time", "end_time", "text"]].copy()
         with cutting_room_col:
@@ -111,13 +120,14 @@ def render_shorts_architect() -> None:
         return
     render_panel_header("Step 3: The Render Engine", "Approve the edited lines and export 9:16 vertical shorts into your local output folder.")
     payload = st.session_state.get("shorts_editor_payload", {})
-    render_status_strip([("Layout", payload.get("layout_mode", "Solo Mode")), ("Caption Tone", payload.get("caption_color", "#FFD700")), ("Exports", str(len(st.session_state.shorts_outputs)))])
     render_editorial_list(
         "Render Preflight",
         [
             ("Transcript Ready", "Yes" if st.session_state.transcription_data is not None else "No"),
             ("Main Video", "Loaded" if st.session_state.shorts_main_video_path else "Missing"),
             ("B-Roll", "Loaded" if st.session_state.shorts_broll_video_path else "Not attached"),
+            ("Layout", payload.get("layout_mode", "Solo Mode")),
+            ("Caption Tone", payload.get("caption_color", "#FFD700")),
             ("Output Folder", SHORTS_OUTPUT_DIR.name),
         ],
     )

@@ -42,3 +42,29 @@ def initialize_state() -> None:
         st.session_state.coach_response_style = "Concise"
     if "upload_takeaways" not in st.session_state:
         st.session_state.upload_takeaways = {}
+    if "command_center_section" not in st.session_state:
+        st.session_state.command_center_section = "Dashboard"
+    if "repertoire_section" not in st.session_state:
+        st.session_state.repertoire_section = "Idea Board"
+    if "shorts_section" not in st.session_state:
+        st.session_state.shorts_section = "Ingest"
+    if "upload_lab_section" not in st.session_state:
+        st.session_state.upload_lab_section = "Summary"
+    if "momentum_workspace_section" not in st.session_state:
+        st.session_state.momentum_workspace_section = "Snapshot"
+    if "creator_metadata_status" not in st.session_state:
+        st.session_state.creator_metadata_status = ""
+    if "creator_metadata_title" not in st.session_state:
+        st.session_state.creator_metadata_title = ""
+    if "creator_metadata_description" not in st.session_state:
+        st.session_state.creator_metadata_description = ""
+    if "creator_metadata_tags" not in st.session_state:
+        st.session_state.creator_metadata_tags = ""
+    if "creator_metadata_ai_draft" not in st.session_state:
+        st.session_state.creator_metadata_ai_draft = ""
+    if "creator_comment_rows" not in st.session_state:
+        st.session_state.creator_comment_rows = []
+    if "creator_comment_status" not in st.session_state:
+        st.session_state.creator_comment_status = ""
+    if "creator_reply_draft" not in st.session_state:
+        st.session_state.creator_reply_draft = ""
