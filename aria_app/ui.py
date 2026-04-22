@@ -55,14 +55,14 @@ def render_hero() -> None:
             <div class="appbar-left">
                 <div class="appbar-mark">RS</div>
                 <div>
-                    <div class="appbar-title">Ralskies Creator Studio</div>
-                    <div class="appbar-copy">Dashboard, analytics, repertoire, and release decisions in one private workspace.</div>
+                    <div class="appbar-title">Ralskies Studio Desk</div>
+                    <div class="appbar-copy">A creator operations board for analytics, release planning, fan demand, and shorts production.</div>
                 </div>
             </div>
             <div class="appbar-right">
-                <div class="masthead-pill">Creator Dashboard</div>
-                <div class="masthead-pill">Analytics</div>
-                <div class="masthead-pill">A.R.I.A.</div>
+                <div class="masthead-pill">Live Signals</div>
+                <div class="masthead-pill">Release Desk</div>
+                <div class="masthead-pill">Local AI</div>
             </div>
         </div>
         """,
@@ -70,87 +70,37 @@ def render_hero() -> None:
     )
 
 
-def render_sidebar() -> str:
-    with st.sidebar:
-        channel_profile = None
-        channel_message = ""
-        if has_saved_token():
-            channel_profile, channel_message = get_live_channel_profile(st.session_state.vault_settings)
+def render_header_navigation() -> str:
+    if st.session_state.get("selected_view") not in PAGE_LABELS:
+        st.session_state.selected_view = PAGE_LABELS[0]
 
-        st.markdown(
-            """
-            <div class="sidebar-brand">
-                <div class="sidebar-kicker">Ralskies Studio OS</div>
-                <div class="sidebar-title">A.R.I.A.</div>
-                <div class="sidebar-copy">
-                    A quieter control room for planning releases, reading signals, and guiding the next upload.
-                </div>
+    vault = st.session_state.vault_settings
+    token_status = "Connected" if has_saved_token() else "Missing"
+    st.markdown(
+        f"""
+        <div class="header-nav-shell">
+            <div>
+                <div class="header-nav-title">Studio Areas</div>
+                <div class="header-nav-copy">Move between dashboard, research, repertoire, shorts, and settings from the top rail.</div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        if channel_profile:
-            if channel_profile.get("thumbnail_url"):
-                st.image(channel_profile["thumbnail_url"], width=72)
-            st.markdown(
-                f"""
-                <div class="sidebar-card">
-                    <strong>{channel_profile.get("title", "Connected Channel")}</strong>
-                    <p>{channel_profile.get("handle", "Authorized YouTube profile")}</p>
-                    <p>{int(channel_profile.get("subscriber_count", "0")):,} subscribers | {int(channel_profile.get("video_count", "0")):,} videos</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        elif channel_message:
-            st.caption(channel_message)
-
-        st.markdown('<div class="sidebar-section">Navigation</div>', unsafe_allow_html=True)
-        selected_view = st.radio(
-            "Navigation",
-            options=PAGE_LABELS,
-            key="selected_view",
-            label_visibility="collapsed",
-        )
-
-        vault = st.session_state.vault_settings
-        st.markdown('<div class="sidebar-section">System</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <div class="sidebar-card">
-                <strong>Model</strong>
-                <p>{vault.get("ollama_model", "Not set")}</p>
-                <div class="sidebar-status-grid">
-                    <div class="sidebar-status-pill">
-                        <strong>Data</strong>
-                        <span>Live YouTube</span>
-                    </div>
-                    <div class="sidebar-status-pill">
-                        <strong>Style</strong>
-                        <span>{st.session_state.get("coach_response_style", "Concise")}</span>
-                    </div>
-                    <div class="sidebar-status-pill">
-                        <strong>Token</strong>
-                        <span>{"Connected" if has_saved_token() else "Missing"}</span>
-                    </div>
-                    <div class="sidebar-status-pill">
-                        <strong>Mode</strong>
-                        <span>Private Local</span>
-                    </div>
-                </div>
+            <div class="header-nav-status">
+                <span>{vault.get("ollama_model", "No model")}</span>
+                <span>YouTube {token_status}</span>
+                <span>{st.session_state.get("coach_response_style", "Concise")}</span>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.selectbox(
-            "A.R.I.A. response style",
-            options=["Concise", "Standard", "Deep"],
-            key="coach_response_style",
-            help="Controls how short or detailed A.R.I.A. should be across coaching and generation.",
-        )
-
-    return selected_view
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    selected_view = st.segmented_control(
+        "Studio Areas",
+        options=PAGE_LABELS,
+        key="selected_view",
+        label_visibility="collapsed",
+    )
+    if selected_view is None:
+        selected_view = st.session_state.get("selected_view", PAGE_LABELS[0])
+    return str(selected_view)
 
 
 def render_quick_jump_bar(selected_view: str) -> None:
@@ -162,11 +112,11 @@ def render_quick_jump_bar(selected_view: str) -> None:
             ordered_labels.append(label)
 
     st.markdown(
-        """
-        <div class="jumpbar-shell">
-            <div>
-                <div class="jumpbar-title">Quick Jump</div>
-                <div class="jumpbar-copy">Global shortcuts stay visible, and the rest of the jump bar adapts to your current workspace.</div>
+            """
+            <div class="jumpbar-shell">
+                <div>
+                <div class="jumpbar-title">Studio Shortcuts</div>
+                <div class="jumpbar-copy">Jump straight to the workbench that matches the next decision.</div>
             </div>
         </div>
         """,
