@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from .theme import APP_CSS
+from .navigation import PAGE_LABELS
 from youtube_client import get_live_channel_profile, has_saved_token
 
 
@@ -108,7 +109,7 @@ def render_sidebar() -> str:
         st.markdown('<div class="sidebar-section">Navigation</div>', unsafe_allow_html=True)
         selected_view = st.radio(
             "Navigation",
-            options=["Command Center", "Niche Lab", "Repertoire", "Shorts Architect", "The Vault"],
+            options=PAGE_LABELS,
             key="selected_view",
             label_visibility="collapsed",
         )

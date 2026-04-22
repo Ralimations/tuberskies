@@ -5,7 +5,7 @@ import textwrap
 import streamlit as st
 
 from aria_app.ai import build_coach_prompt, stream_ollama_response
-from aria_app.features.command_center import build_keyword_opportunity_df, build_title_scorecard
+from aria_app.features.command_center_parts.keyword_tools import build_keyword_opportunity_df, build_title_scorecard
 from aria_app.ui import render_editorial_list, render_panel_header, render_section_header
 
 
