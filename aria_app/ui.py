@@ -52,16 +52,16 @@ def render_hero() -> None:
         """
         <div class="appbar-shell">
             <div class="appbar-left">
-                <div class="appbar-mark">A.R.I.A.</div>
+                <div class="appbar-mark">RS</div>
                 <div>
-                    <div class="appbar-title">Ralskies Control Room</div>
-                    <div class="appbar-copy">Private analytics, repertoire planning, and next-release intelligence.</div>
+                    <div class="appbar-title">Ralskies Creator Studio</div>
+                    <div class="appbar-copy">Dashboard, analytics, repertoire, and release decisions in one private workspace.</div>
                 </div>
             </div>
             <div class="appbar-right">
+                <div class="masthead-pill">Creator Dashboard</div>
                 <div class="masthead-pill">Analytics</div>
-                <div class="masthead-pill">Radar</div>
-                <div class="masthead-pill">Local AI</div>
+                <div class="masthead-pill">A.R.I.A.</div>
             </div>
         </div>
         """,
@@ -186,6 +186,45 @@ def render_section_header(chip: str, title: str, copy: str) -> None:
         <div class="section-chip">{chip}</div>
         <div class="section-title">{title}</div>
         <div class="section-copy">{copy}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_creator_hero(
+    channel_name: str,
+    handle: str,
+    summary: str,
+    stats: list[tuple[str, str, str]],
+    status: str,
+) -> None:
+    stat_markup = "".join(
+        f"""
+        <div class="creator-hero-stat">
+            <span>{label}</span>
+            <strong>{value}</strong>
+            <small>{meta}</small>
+        </div>
+        """
+        for label, value, meta in stats
+    )
+    st.markdown(
+        f"""
+        <div class="creator-hero">
+            <div class="creator-hero-main">
+                <div class="creator-eyebrow">Creator Command Dashboard</div>
+                <h1>{channel_name}</h1>
+                <p>{summary}</p>
+                <div class="creator-hero-meta">
+                    <span>{handle}</span>
+                    <span>{status}</span>
+                    <span>Private local studio</span>
+                </div>
+            </div>
+            <div class="creator-hero-stats">
+                {stat_markup}
+            </div>
+        </div>
         """,
         unsafe_allow_html=True,
     )

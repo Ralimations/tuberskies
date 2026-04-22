@@ -4,24 +4,26 @@ from __future__ import annotations
 APP_CSS = """
 <style>
 :root {
-    --bg: #0d1324;
-    --surface: #151d34;
-    --surface-soft: #1b2542;
-    --ink: #edf2ff;
-    --muted: #a8b5d3;
+    --bg: #0b1020;
+    --surface: #121a2b;
+    --surface-soft: #182338;
+    --ink: #f5f7fb;
+    --muted: #aab4c8;
     --line: rgba(255, 255, 255, 0.08);
-    --accent: #e2b15b;
-    --accent-deep: #f2cf8c;
-    --sky: #79a0ff;
-    --shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
-    --radius-lg: 22px;
-    --radius-md: 16px;
+    --accent: #f2b84b;
+    --accent-deep: #ffd98c;
+    --sky: #5ec4ff;
+    --mint: #61d394;
+    --rose: #ff7a90;
+    --shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+    --radius-lg: 18px;
+    --radius-md: 12px;
 }
 
 .stApp {
     background:
-        radial-gradient(circle at top right, rgba(121, 160, 255, 0.1), transparent 22%),
-        linear-gradient(180deg, #0d1324 0%, #101935 52%, #0d1530 100%);
+        linear-gradient(135deg, rgba(94, 196, 255, 0.1), transparent 28%),
+        linear-gradient(180deg, #0b1020 0%, #101827 52%, #0c1324 100%);
     color: var(--ink);
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
 }
@@ -62,9 +64,9 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .appbar-shell {
-    background: linear-gradient(135deg, #151d34 0%, #12192d 100%);
+    background: rgba(14, 21, 35, 0.86);
     border: 1px solid var(--line);
-    border-radius: 18px;
+    border-radius: 14px;
     padding: 0.6rem 0.8rem;
     box-shadow: var(--shadow);
     margin-bottom: 0.45rem;
@@ -83,10 +85,10 @@ p, label, .stCaption, .stMarkdown {
 .appbar-mark {
     width: 42px;
     height: 42px;
-    border-radius: 12px;
+    border-radius: 10px;
     display: grid;
     place-items: center;
-    background: linear-gradient(135deg, rgba(226, 177, 91, 0.24), rgba(121, 160, 255, 0.18));
+    background: linear-gradient(135deg, rgba(242, 184, 75, 0.22), rgba(94, 196, 255, 0.16));
     border: 1px solid rgba(255,255,255,0.08);
     color: var(--accent-deep);
     font-size: 0.7rem;
@@ -230,16 +232,108 @@ p, label, .stCaption, .stMarkdown {
     width: fit-content;
 }
 
+.creator-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+    gap: 1rem;
+    align-items: stretch;
+    padding: 1.05rem;
+    margin-bottom: 0.75rem;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background:
+        linear-gradient(135deg, rgba(94, 196, 255, 0.14), transparent 38%),
+        linear-gradient(145deg, #151f32 0%, #101827 58%, #10151f 100%);
+    box-shadow: var(--shadow);
+}
+
+.creator-hero-main h1 {
+    margin: 0.16rem 0 0.4rem 0;
+    font-size: clamp(2rem, 4vw, 4.2rem);
+    line-height: 0.95;
+    letter-spacing: 0;
+    color: var(--ink);
+}
+
+.creator-eyebrow {
+    color: var(--accent-deep);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.creator-hero-main p {
+    max-width: 66ch;
+    margin: 0;
+    color: #c4ccda;
+    font-size: 0.95rem;
+    line-height: 1.52;
+}
+
+.creator-hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.8rem;
+}
+
+.creator-hero-meta span {
+    padding: 0.36rem 0.58rem;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 999px;
+    color: #d9e4f5;
+    background: rgba(255,255,255,0.05);
+    font-size: 0.76rem;
+}
+
+.creator-hero-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.62rem;
+}
+
+.creator-hero-stat {
+    min-height: 106px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(7, 12, 22, 0.42);
+    padding: 0.74rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.creator-hero-stat span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.creator-hero-stat strong {
+    color: var(--ink);
+    font-size: 1.36rem;
+    line-height: 1.05;
+}
+
+.creator-hero-stat small {
+    color: var(--accent-deep);
+    font-size: 0.76rem;
+    line-height: 1.25;
+}
+
 .board-lane,
 .snapshot-card,
 .stat-card,
 .insight-card,
+.leaderboard-card,
 [data-testid="stMetric"],
 [data-testid="stDataFrame"],
 [data-testid="stPlotlyChart"],
 [data-testid="stChatMessage"],
 [data-testid="stFileUploader"] {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    background: linear-gradient(180deg, #151f32 0%, #101827 100%);
     border: 1px solid var(--line);
     box-shadow: var(--shadow);
 }
@@ -383,7 +477,7 @@ p, label, .stCaption, .stMarkdown {
 .stat-card {
     border-radius: var(--radius-lg);
     padding: 0.78rem 0.88rem;
-    min-height: 94px;
+    min-height: 100px;
 }
 
 .stat-label {
@@ -396,7 +490,7 @@ p, label, .stCaption, .stMarkdown {
 
 .stat-value {
     font-family: "Segoe UI", "Trebuchet MS", sans-serif;
-    font-size: 1.42rem;
+    font-size: 1.5rem;
     line-height: 1;
     color: var(--ink);
     margin-bottom: 0.28rem;
@@ -413,6 +507,47 @@ p, label, .stCaption, .stMarkdown {
     padding: 0.76rem 0.88rem;
     min-height: 82px;
     margin-bottom: 0.4rem;
+}
+
+.leaderboard-card {
+    border-radius: var(--radius-md);
+    padding: 0.78rem 0.88rem;
+    margin-bottom: 0.48rem;
+}
+
+.leaderboard-title {
+    color: var(--ink);
+    font-size: 0.86rem;
+    font-weight: 800;
+    margin-bottom: 0.45rem;
+}
+
+.leaderboard-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.65rem;
+    align-items: center;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 0.38rem 0;
+}
+
+.leaderboard-row:first-of-type {
+    border-top: none;
+}
+
+.leaderboard-label {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.leaderboard-value {
+    color: var(--accent-deep);
+    font-size: 0.8rem;
+    font-weight: 700;
 }
 
 .insight-title {
@@ -514,7 +649,7 @@ p, label, .stCaption, .stMarkdown {
 }
 
 [data-testid="stSidebar"] {
-    background: #0f172d;
+    background: #0c1322;
     border-right: 1px solid var(--line);
 }
 
@@ -558,7 +693,7 @@ p, label, .stCaption, .stMarkdown {
 }
 
 .sidebar-card {
-    background: linear-gradient(180deg, #17203d 0%, #121a32 100%);
+    background: linear-gradient(180deg, #151f32 0%, #101827 100%);
     border: 1px solid var(--line);
     border-radius: 16px;
     padding: 0.68rem;
@@ -621,9 +756,15 @@ p, label, .stCaption, .stMarkdown {
 
 @media (max-width: 900px) {
     .appbar-shell,
-    .action-strip {
+    .action-strip,
+    .creator-hero {
         flex-direction: column;
         align-items: flex-start;
+        grid-template-columns: 1fr;
+    }
+
+    .creator-hero-stats {
+        grid-template-columns: 1fr;
     }
 }
 </style>

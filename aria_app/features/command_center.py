@@ -12,6 +12,7 @@ from aria_app.ai import stream_ollama_response
 from aria_app.pattern_memory import refresh_pattern_memory
 from aria_app.ui import (
     render_action_strip,
+    render_creator_hero,
     render_editorial_list,
     render_insight_card,
     render_leaderboard_card,
@@ -20,6 +21,7 @@ from aria_app.ui import (
     render_stat_card,
     render_status_strip,
 )
+from mock_data import generate_analytics_data
 from youtube_client import (
     authorize_youtube_analytics,
     get_live_channel_profile,
@@ -52,6 +54,87 @@ def build_metric_row(df: pd.DataFrame) -> None:
         render_stat_card("Subscribers | Last 30 Days", f"{subscribers:,}", "Subscribers gained across the last 30 days")
     with col3:
         render_stat_card("Watch Time | Last 30 Days", f"{watch_time_hours:,}", "Estimated watch time hours from live analytics")
+
+
+def build_creator_hero_stats(
+    analytics_df: pd.DataFrame,
+    video_df: pd.DataFrame | None,
+    calendar_df: pd.DataFrame,
+    live_profile: dict[str, object] | None,
+) -> list[tuple[str, str, str]]:
+    last_30 = analytics_df.tail(30)
+    views = int(last_30["views"].fillna(0).sum()) if not last_30.empty else 0
+    watch_time = int(round(last_30["watch_time_hours"].fillna(0).sum())) if not last_30.empty else 0
+    subscribers = (
+        f"{int(live_profile.get('subscriber_count', '0')):,}"
+        if live_profile
+        else f"+{int(last_30['subscribers_gained'].fillna(0).sum()):,}"
+        if not last_30.empty
+        else "--"
+    )
+    active_projects = len(calendar_df) if calendar_df is not None else 0
+    upload_count = len(video_df) if video_df is not None and not video_df.empty else 0
+    return [
+        ("Views", f"{views:,}", "last 30 days"),
+        ("Subscribers", subscribers, "channel total or recent gain"),
+        ("Watch Time", f"{watch_time:,}h", "last 30 days"),
+        ("Pipeline", str(active_projects), f"{upload_count} uploads tracked"),
+    ]
+
+
+def render_dashboard_snapshot(analytics_df: pd.DataFrame, video_df: pd.DataFrame | None, calendar_df: pd.DataFrame) -> None:
+    render_panel_header(
+        "Creator Dashboard",
+        "A single operating view for channel health, recent audience response, upload performance, and the production pipeline.",
+    )
+    build_metric_row(analytics_df)
+    build_health_snapshot(analytics_df)
+
+    left, center, right = st.columns([1.25, 0.95, 0.9])
+    with left:
+        build_analytics_chart(analytics_df, "views")
+    with center:
+        if video_df is not None and not video_df.empty:
+            upload_rows = []
+            for _, row in video_df.head(6).iterrows():
+                upload_rows.append((str(row["title"])[:44], f"{int(row['views']):,} views"))
+            render_leaderboard_card("Top Uploads", upload_rows, dense=False)
+        else:
+            render_leaderboard_card(
+                "Top Uploads",
+                [("Connect YouTube Analytics", "upload data"), ("Then return here", "ranked history")],
+                dense=False,
+            )
+        alerts = get_alert_rows(analytics_df).head(4)
+        render_editorial_list(
+            "Signal Alerts",
+            [
+                (
+                    row["date"].strftime("%Y-%m-%d"),
+                    f"Retention {row['retention']:.1f}%",
+                )
+                for _, row in alerts.iterrows()
+            ]
+            or [("Status", "No major retention alerts in the current view.")],
+        )
+    with right:
+        stage_counts = calendar_df["stage"].value_counts().to_dict() if calendar_df is not None and not calendar_df.empty else {}
+        render_editorial_list(
+            "Production Pipeline",
+            [
+                ("Ideas", str(stage_counts.get("Song Idea", 0))),
+                ("Prep", str(stage_counts.get("Instrumental Prep", 0))),
+                ("Recording", str(stage_counts.get("BandLab Recording", 0))),
+                ("Editing", str(stage_counts.get("Video Editing", 0))),
+                ("Upload Ready", str(stage_counts.get("Upload", 0))),
+            ],
+        )
+        timing_df = build_publish_timing_table(analytics_df)
+        if timing_df.empty:
+            render_editorial_list("Best Publish Days", [("Status", "Waiting for daily analytics.")])
+        else:
+            top_days = timing_df.sort_values("publish_score", ascending=False).head(3)
+            render_editorial_list("Best Publish Days", [(row["weekday"], f"Score {row['publish_score']:.1f}") for _, row in top_days.iterrows()])
 
 
 def build_health_snapshot(df: pd.DataFrame) -> None:
@@ -1347,13 +1430,23 @@ def render_pattern_memory(snapshot: dict[str, object]) -> None:
 
 
 def render_command_center() -> None:
-    render_section_header("Performance", "Command Center", "Track discovery, retention, and audience response for theatrical covers, reimagined performances, and original releases.")
-
     live_df, live_message = load_live_analytics(st.session_state.vault_settings)
     video_df, video_message = load_video_performance(st.session_state.vault_settings)
     live_profile, live_profile_message = get_live_channel_profile(st.session_state.vault_settings) if has_saved_token() else (None, "")
     st.session_state.analytics_source = "Live YouTube"
-    analytics_df = live_df if live_df is not None else pd.DataFrame(columns=["date", "views", "ctr", "retention", "watch_time_hours", "subscribers_gained"])
+    using_demo_analytics = live_df is None
+    analytics_df = live_df if live_df is not None else generate_analytics_data(days=90)
+
+    channel_name = str(live_profile.get("title", "Ralskies")) if live_profile else "Ralskies"
+    channel_handle = str(live_profile.get("handle", "@ralskies")) if live_profile else "@ralskies"
+    status = "Live YouTube connected" if live_df is not None else "Demo analytics until YouTube is connected"
+    render_creator_hero(
+        channel_name=channel_name,
+        handle=channel_handle,
+        summary="A creator-driven studio for deciding what to record, when to publish, which formats are working, and where A.R.I.A. should focus next.",
+        stats=build_creator_hero_stats(analytics_df, video_df, st.session_state.calendar_df, live_profile),
+        status=status,
+    )
 
     auth_col1, auth_col2 = st.columns([1, 1.6])
     auth_button_label = "Reconnect YouTube" if has_saved_token() else "Connect YouTube Analytics"
@@ -1365,13 +1458,11 @@ def render_command_center() -> None:
     if st.session_state.youtube_auth_notice:
         auth_col2.info(st.session_state.youtube_auth_notice)
 
-    if live_df is None and (video_df is None or video_df.empty):
-        st.error(live_message or video_message or "No live YouTube data is available yet.")
-        return
-
-    if live_df is not None:
+    if using_demo_analytics:
+        st.info(live_message or "Showing a sample creator dashboard until live YouTube analytics are connected.")
+    else:
         st.success(live_message)
-    elif video_message:
+    if live_df is None and video_message and video_df is not None and not video_df.empty:
         st.warning(f"Daily analytics are unavailable right now. {video_message}")
 
     if live_profile:
@@ -1385,12 +1476,10 @@ def render_command_center() -> None:
     elif live_profile_message:
         st.caption(live_profile_message)
 
-    build_metric_row(analytics_df)
-    build_health_snapshot(analytics_df)
     render_action_strip(
-        "Daily Control Strip",
-        "Stay in one pane at a time: monitor live channel health, inspect upload history, or jump straight into momentum planning.",
-        ["Live YouTube", "Upload Lab", "Pattern Memory"],
+        "Creator Control Strip",
+        "Start with the dashboard, then move into analytics, audit, timing, memory, or upload-level decisions.",
+        ["Dashboard", "Analytics", "Uploads", "Pipeline"],
     )
     st.session_state.upload_takeaways = build_upload_takeaways(video_df if video_df is not None else pd.DataFrame())
     st.session_state.pattern_memory = refresh_pattern_memory(
@@ -1408,15 +1497,25 @@ def render_command_center() -> None:
     if analytics_df["ctr"].notna().any():
         metric_options.insert(0, "ctr")
 
+    command_sections = ["Dashboard", "Today Desk", "Analytics", "Channel Audit", "Publish Timing", "Pattern Memory", "Upload Lab"]
+    if st.session_state.get("command_center_section") == "Overview":
+        st.session_state.command_center_section = "Analytics"
+    if st.session_state.get("command_center_section") not in command_sections:
+        st.session_state.command_center_section = "Dashboard"
+
     st.markdown('<div class="subnav-wrap">', unsafe_allow_html=True)
     active_section = st.segmented_control(
         "Command Center Section",
-        options=["Today Desk", "Overview", "Channel Audit", "Publish Timing", "Pattern Memory", "Upload Lab"],
-        default="Today Desk",
+        options=command_sections,
+        default="Dashboard",
         key="command_center_section",
         label_visibility="collapsed",
     )
     st.markdown("</div>", unsafe_allow_html=True)
+
+    if active_section == "Dashboard":
+        render_dashboard_snapshot(analytics_df, video_df, st.session_state.calendar_df)
+        return
 
     if active_section == "Today Desk":
         render_panel_header("Today Desk", "The one-screen daily brief. This is where A.R.I.A. should feel better than generic creator tools: less noise, clearer action.")
@@ -1458,7 +1557,7 @@ def render_command_center() -> None:
             st.session_state.calendar_coach_context = "A.R.I.A. Today Desk"
         return
 
-    if active_section == "Overview":
+    if active_section == "Analytics":
         selected_metric = st.radio(
             "Chart focus",
             options=metric_options,
