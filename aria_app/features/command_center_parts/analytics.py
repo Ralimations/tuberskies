@@ -67,8 +67,8 @@ def build_creator_hero_stats(
 
 def render_dashboard_snapshot(analytics_df: pd.DataFrame, video_df: pd.DataFrame | None, calendar_df: pd.DataFrame) -> None:
     render_panel_header(
-        "Creator Dashboard",
-        "A single operating view for channel health, recent audience response, upload performance, and the production pipeline.",
+        "Macro Pulse",
+        "A broad read on channel health, audience response, upload performance, and production pressure before any drill-down.",
     )
     build_metric_row(analytics_df)
     build_health_snapshot(analytics_df)
@@ -162,19 +162,19 @@ def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
         title=f"{labels[metric_name]} Over Time",
         template="plotly_white",
     )
-    chart.update_traces(line=dict(color="#4DB8FF", width=3), marker=dict(size=6, color="#FFD700"))
+    chart.update_traces(line=dict(color="#176b87", width=2.4), marker=dict(size=4, color="#176b87"))
     chart.update_layout(
         height=380,
-        margin=dict(l=20, r=20, t=60, b=20),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(26,34,53,0.65)",
-        font=dict(color="#edf2ff", family="Inter, Segoe UI, sans-serif"),
-        title_font=dict(family="Montserrat, Bahnschrift, sans-serif", size=22),
+        margin=dict(l=18, r=18, t=52, b=18),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font=dict(color="#141516", family="Inter, Segoe UI, Arial, sans-serif"),
+        title_font=dict(family="Inter, Segoe UI, Arial, sans-serif", size=17, color="#141516"),
         xaxis_title=None,
         yaxis_title=None,
     )
-    chart.update_xaxes(showgrid=False)
-    chart.update_yaxes(gridcolor="rgba(237,242,255,0.08)")
+    chart.update_xaxes(showgrid=False, linecolor="#dedfda", tickfont=dict(color="#6b706f"))
+    chart.update_yaxes(gridcolor="#ecece7", zeroline=False, tickfont=dict(color="#6b706f"))
     st.plotly_chart(chart, use_container_width=True)
 
 

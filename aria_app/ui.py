@@ -4,7 +4,6 @@ import streamlit as st
 
 from .theme import APP_CSS
 from .navigation import PAGE_LABELS
-from youtube_client import get_live_channel_profile, has_saved_token
 
 
 QUICK_JUMP_TARGETS = {
@@ -53,17 +52,13 @@ def render_hero() -> None:
         """
         <div class="appbar-shell">
             <div class="appbar-left">
-                <div class="appbar-mark">RS</div>
+                <div class="appbar-mark">A</div>
                 <div>
-                    <div class="appbar-title">Ralskies Studio Desk</div>
-                    <div class="appbar-copy">A creator operations board for analytics, release planning, fan demand, and shorts production.</div>
+                    <div class="appbar-title">A.R.I.A. Analytics</div>
+                    <div class="appbar-copy">Signal-first workspace for channel decisions.</div>
                 </div>
             </div>
-            <div class="appbar-right">
-                <div class="masthead-pill">Live Signals</div>
-                <div class="masthead-pill">Release Desk</div>
-                <div class="masthead-pill">Local AI</div>
-            </div>
+            <div class="appbar-nav-anchor">Navigation</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -74,24 +69,6 @@ def render_header_navigation() -> str:
     if st.session_state.get("selected_view") not in PAGE_LABELS:
         st.session_state.selected_view = PAGE_LABELS[0]
 
-    vault = st.session_state.vault_settings
-    token_status = "Connected" if has_saved_token() else "Missing"
-    st.markdown(
-        f"""
-        <div class="header-nav-shell">
-            <div>
-                <div class="header-nav-title">Studio Areas</div>
-                <div class="header-nav-copy">Move between dashboard, research, repertoire, shorts, and settings from the top rail.</div>
-            </div>
-            <div class="header-nav-status">
-                <span>{vault.get("ollama_model", "No model")}</span>
-                <span>YouTube {token_status}</span>
-                <span>{st.session_state.get("coach_response_style", "Concise")}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
     selected_view = st.segmented_control(
         "Studio Areas",
         options=PAGE_LABELS,
@@ -104,31 +81,7 @@ def render_header_navigation() -> str:
 
 
 def render_quick_jump_bar(selected_view: str) -> None:
-    global_labels = ["Today Desk", "Upload Radar", "Request Signals"]
-    contextual_labels = CONTEXTUAL_JUMP_GROUPS.get(selected_view, [])
-    ordered_labels: list[str] = []
-    for label in global_labels + contextual_labels:
-        if label not in ordered_labels:
-            ordered_labels.append(label)
-
-    st.markdown(
-            """
-            <div class="jumpbar-shell">
-                <div>
-                <div class="jumpbar-title">Studio Shortcuts</div>
-                <div class="jumpbar-copy">Jump straight to the workbench that matches the next decision.</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    cols = st.columns(len(ordered_labels))
-    for col, label in zip(cols, ordered_labels):
-        with col:
-            if st.button(label, key=f"quick_jump_{label.lower().replace(' ', '_')}", use_container_width=True):
-                for state_key, state_value in QUICK_JUMP_TARGETS[label].items():
-                    st.session_state[state_key] = state_value
-                st.rerun()
+    return
 
 
 def render_section_header(chip: str, title: str, copy: str) -> None:
@@ -163,13 +116,13 @@ def render_creator_hero(
         f"""
         <div class="creator-hero">
             <div class="creator-hero-main">
-                <div class="creator-eyebrow">Creator Command Dashboard</div>
+                <div class="creator-eyebrow">Macro pulse</div>
                 <h1>{channel_name}</h1>
                 <p>{summary}</p>
                 <div class="creator-hero-meta">
                     <span>{handle}</span>
                     <span>{status}</span>
-                    <span>Private local studio</span>
+                    <span>Local analytics memory</span>
                 </div>
             </div>
             <div class="creator-hero-stats">

@@ -43,7 +43,7 @@ def render_command_center() -> None:
     render_creator_hero(
         channel_name=channel_name,
         handle=channel_handle,
-        summary="A creator-driven studio for deciding what to record, when to publish, which formats are working, and where A.R.I.A. should focus next.",
+        summary="A quiet analytics environment for moving from channel pulse to upload-level evidence without losing the thread.",
         stats=build_creator_hero_stats(analytics_df, video_df, st.session_state.calendar_df, live_profile),
         status=status,
     )
@@ -77,9 +77,9 @@ def render_command_center() -> None:
         st.caption(live_profile_message)
 
     render_action_strip(
-        "Creator Control Strip",
-        "Start with the dashboard, then move into analytics, audit, timing, memory, or upload-level decisions.",
-        ["Dashboard", "Analytics", "Uploads", "Pipeline"],
+        "Path Home",
+        "Begin at the surface, then unfold only the layer needed for the question in front of you.",
+        ["Surface", "Drill-down", "Evidence", "Action"],
     )
     st.session_state.upload_takeaways = build_upload_takeaways(video_df if video_df is not None else pd.DataFrame())
     st.session_state.pattern_memory = refresh_pattern_memory(
