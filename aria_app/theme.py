@@ -22,6 +22,16 @@ APP_CSS = """
     --sans: "Inter", "Segoe UI", Arial, sans-serif;
 }
 
+html,
+body,
+#root,
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"],
+.stApp {
+    background: var(--bg) !important;
+}
+
 .stApp {
     background: var(--bg);
     color: var(--ink);
@@ -89,8 +99,7 @@ a {
     letter-spacing: 0;
 }
 
-.appbar-mark,
-.channel-avatar {
+.appbar-mark {
     width: 22px;
     height: 22px;
     display: grid;
@@ -186,37 +195,6 @@ a {
     text-align: center;
 }
 
-.top-channel-pill {
-    position: fixed;
-    top: 18px;
-    left: calc(236px + ((100vw - 236px) / 2));
-    transform: translateX(-50%);
-    z-index: 89;
-    min-height: 34px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 13px 5px 7px;
-    border-radius: 999px;
-    background: var(--surface);
-    color: var(--ink);
-    font-size: 0.84rem;
-    font-weight: 800;
-}
-
-.channel-avatar {
-    width: 20px;
-    height: 20px;
-    border-radius: 999px;
-    background: var(--surface-3);
-    border: 1px solid var(--line);
-}
-
-.channel-caret {
-    color: var(--muted);
-    font-size: 0.7rem;
-}
-
 .jumpbar-shell {
     display: none;
 }
@@ -252,6 +230,46 @@ a {
     border-radius: 16px;
     background: var(--surface);
     box-shadow: none;
+}
+
+[data-testid="stChatMessage"] {
+    border-radius: 14px;
+    margin-bottom: 10px;
+}
+
+[data-testid="stBottom"],
+[data-testid="stBottomBlockContainer"],
+[data-testid="stBottom"] > div,
+[data-testid="stBottom"] section,
+[data-testid="stChatInput"],
+[data-testid="stChatInput"] > div {
+    background: var(--bg) !important;
+}
+
+[data-testid="stBottom"] {
+    left: 236px !important;
+    border-top: 1px solid var(--line-soft);
+}
+
+[data-testid="stBottomBlockContainer"] {
+    padding: 0 !important;
+}
+
+[data-testid="stChatInput"] {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 12px 28px 16px 28px;
+}
+
+[data-testid="stChatInput"] textarea {
+    border: 1px solid var(--line) !important;
+    border-radius: 12px !important;
+    background: var(--surface) !important;
+    color: var(--ink) !important;
+}
+
+[data-testid="stChatInput"] textarea::placeholder {
+    color: var(--faint) !important;
 }
 
 .creator-hero-main {
@@ -758,14 +776,20 @@ a {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .top-channel-pill {
-        display: none;
-    }
-
     .block-container {
         max-width: none;
         margin-left: 0;
         padding: 20px 16px 40px 16px;
+    }
+
+    [data-testid="stBottom"] {
+        left: 0 !important;
+    }
+
+    [data-testid="stChatInput"] {
+        max-width: none;
+        padding-left: 16px;
+        padding-right: 16px;
     }
 
     .creator-hero-stats {

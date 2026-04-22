@@ -7,7 +7,7 @@ SIDEBAR_TOOLS = [
     {
         "group": "Home",
         "items": [
-            ("Home", "home", {"view": "Command Center", "command_center_section": "Dashboard"}),
+            ("Ask A.R.I.A.", "comments", {"view": "Command Center", "command_center_section": "Dashboard"}),
             ("Analytics", "chart", {"view": "Command Center", "command_center_section": "Analytics"}),
             ("Creator Actions", "comments", {"view": "Creator Actions"}),
         ],

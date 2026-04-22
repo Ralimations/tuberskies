@@ -42,6 +42,8 @@ def initialize_state() -> None:
         st.session_state.coach_response_style = "Concise"
     if "upload_takeaways" not in st.session_state:
         st.session_state.upload_takeaways = {}
+    if "aria_analytics_chat" not in st.session_state:
+        st.session_state.aria_analytics_chat = []
     if "command_center_section" not in st.session_state:
         st.session_state.command_center_section = "Dashboard"
     if "repertoire_section" not in st.session_state:

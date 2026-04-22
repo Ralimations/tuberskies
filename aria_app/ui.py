@@ -116,11 +116,6 @@ def render_header_navigation() -> str:
         f'<div class="header-menu-shell">{group_markup}</div>'
         '<div class="sidebar-upgrade">Local-first creator intelligence</div>'
         '</aside>'
-        '<div class="top-channel-pill">'
-        '<span class="channel-avatar">R</span>'
-        '<span>Ralskies</span>'
-        '<span class="channel-caret">v</span>'
-        '</div>'
         '</div>'
     )
     st.markdown(shell_markup, unsafe_allow_html=True)

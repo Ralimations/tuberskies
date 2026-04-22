@@ -29,7 +29,7 @@ from youtube_client import (
     authorize_youtube_analytics,
     has_saved_token,
 )
-from aria_app.features.command_center_parts.action_feed import build_action_feed_cards, render_action_feed
+from aria_app.features.command_center_parts.analytics_chat import render_analytics_chat
 
 def render_command_center() -> None:
     force_refresh = bool(st.session_state.pop("force_youtube_cache_refresh", False))
@@ -43,6 +43,37 @@ def render_command_center() -> None:
     st.session_state.analytics_source = "Live YouTube"
     using_demo_analytics = live_df is None
     analytics_df = live_df if live_df is not None else generate_analytics_data(days=90)
+
+    command_sections = ["Dashboard", "Analytics", "Pattern Memory", "Upload Lab"]
+    if st.session_state.get("command_center_section") == "Overview":
+        st.session_state.command_center_section = "Analytics"
+    if st.session_state.get("command_center_section") in {"Today Desk", "Channel Audit", "Publish Timing"}:
+        st.session_state.command_center_section = "Analytics"
+    if st.session_state.get("command_center_section") not in command_sections:
+        st.session_state.command_center_section = "Dashboard"
+
+    active_section = st.session_state.command_center_section
+
+    st.session_state.upload_takeaways = build_upload_takeaways(video_df if video_df is not None else pd.DataFrame())
+    st.session_state.pattern_memory = refresh_pattern_memory(
+        analytics_df,
+        st.session_state.calendar_df,
+        st.session_state.niche_output,
+    )
+    pattern_snapshot = st.session_state.pattern_memory.get("latest")
+
+    today_payload = build_today_desk_payload(analytics_df, st.session_state.calendar_df, st.session_state.niche_output)
+
+    if active_section == "Dashboard":
+        render_analytics_chat(
+            analytics_df=analytics_df,
+            video_df=video_df,
+            calendar_df=st.session_state.calendar_df,
+            today_payload=today_payload,
+            upload_takeaways=st.session_state.upload_takeaways,
+            pattern_snapshot=pattern_snapshot,
+        )
+        return
 
     channel_name = str(live_profile.get("title", "Ralskies")) if live_profile else "Ralskies"
     channel_handle = str(live_profile.get("handle", "@ralskies")) if live_profile else "@ralskies"
@@ -86,44 +117,12 @@ def render_command_center() -> None:
     elif live_profile_message:
         st.caption(live_profile_message)
 
-    st.session_state.upload_takeaways = build_upload_takeaways(video_df if video_df is not None else pd.DataFrame())
-    st.session_state.pattern_memory = refresh_pattern_memory(
-        analytics_df,
-        st.session_state.calendar_df,
-        st.session_state.niche_output,
-    )
-    pattern_snapshot = st.session_state.pattern_memory.get("latest")
-
-    today_payload = build_today_desk_payload(analytics_df, st.session_state.calendar_df, st.session_state.niche_output)
     audit_rows = build_channel_audit_rows(analytics_df, st.session_state.calendar_df, st.session_state.vault_settings)
     timing_df = build_publish_timing_table(analytics_df)
 
     metric_options = ["views", "retention"]
     if analytics_df["ctr"].notna().any():
         metric_options.insert(0, "ctr")
-
-    command_sections = ["Dashboard", "Analytics", "Pattern Memory", "Upload Lab"]
-    if st.session_state.get("command_center_section") == "Overview":
-        st.session_state.command_center_section = "Analytics"
-    if st.session_state.get("command_center_section") in {"Today Desk", "Channel Audit", "Publish Timing"}:
-        st.session_state.command_center_section = "Analytics"
-    if st.session_state.get("command_center_section") not in command_sections:
-        st.session_state.command_center_section = "Dashboard"
-
-    active_section = st.session_state.command_center_section
-
-    if active_section == "Dashboard":
-        feed_cards = build_action_feed_cards(
-            analytics_df=analytics_df,
-            video_df=video_df,
-            calendar_df=st.session_state.calendar_df,
-            today_payload=today_payload,
-            upload_takeaways=st.session_state.upload_takeaways,
-            using_demo_analytics=using_demo_analytics,
-            live_message=live_message,
-        )
-        render_action_feed(feed_cards)
-        return
 
     if active_section == "Analytics":
         selected_metric = st.radio(
