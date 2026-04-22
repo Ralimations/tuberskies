@@ -7,7 +7,7 @@ import streamlit as st
 
 from aria_app.ai import stream_ollama_response
 from aria_app.pattern_memory import refresh_pattern_memory
-from aria_app.ui import render_action_strip, render_editorial_list, render_insight_card, render_panel_header, render_status_strip
+from aria_app.ui import render_editorial_list, render_insight_card, render_panel_header, render_status_strip
 from aria_app.features.command_center_parts.analytics import (
     build_channel_audit_rows,
     build_creator_hero_stats,
@@ -21,18 +21,25 @@ from aria_app.features.command_center_parts.analytics import (
 from aria_app.features.command_center_parts.upload_lab import build_upload_takeaways, render_upload_lab
 from aria_app.features.command_center_parts.pattern_view import render_pattern_memory
 from mock_data import generate_analytics_data
+from youtube_cache import (
+    cached_channel_profile,
+    cached_live_analytics,
+    cached_video_performance,
+)
 from youtube_client import (
     authorize_youtube_analytics,
-    get_live_channel_profile,
     has_saved_token,
-    load_live_analytics,
-    load_video_performance,
 )
 
 def render_command_center() -> None:
-    live_df, live_message = load_live_analytics(st.session_state.vault_settings)
-    video_df, video_message = load_video_performance(st.session_state.vault_settings)
-    live_profile, live_profile_message = get_live_channel_profile(st.session_state.vault_settings) if has_saved_token() else (None, "")
+    force_refresh = bool(st.session_state.pop("force_youtube_cache_refresh", False))
+    live_df, live_message = cached_live_analytics(st.session_state.vault_settings, force_refresh=force_refresh)
+    video_df, video_message = cached_video_performance(st.session_state.vault_settings, force_refresh=force_refresh)
+    live_profile, live_profile_message = (
+        cached_channel_profile(st.session_state.vault_settings, force_refresh=force_refresh)
+        if has_saved_token()
+        else (None, "")
+    )
     st.session_state.analytics_source = "Live YouTube"
     using_demo_analytics = live_df is None
     analytics_df = live_df if live_df is not None else generate_analytics_data(days=90)
@@ -55,6 +62,9 @@ def render_command_center() -> None:
             st.session_state.youtube_auth_notice = authorize_youtube_analytics(st.session_state.vault_settings)
         except Exception as error:
             st.session_state.youtube_auth_notice = f"YouTube authorization failed: {error}"
+    if auth_col1.button("Refresh YouTube Cache", key="command_center_refresh_cache"):
+        st.session_state.force_youtube_cache_refresh = True
+        st.rerun()
     if st.session_state.youtube_auth_notice:
         auth_col2.info(st.session_state.youtube_auth_notice)
 
@@ -76,11 +86,6 @@ def render_command_center() -> None:
     elif live_profile_message:
         st.caption(live_profile_message)
 
-    render_action_strip(
-        "Path Home",
-        "Begin at the surface, then unfold only the layer needed for the question in front of you.",
-        ["Surface", "Drill-down", "Evidence", "Action"],
-    )
     st.session_state.upload_takeaways = build_upload_takeaways(video_df if video_df is not None else pd.DataFrame())
     st.session_state.pattern_memory = refresh_pattern_memory(
         analytics_df,

@@ -14,7 +14,7 @@ from aria_app.features.command_center_parts.upload_metrics import (
     build_franchise_heatmap_rows,
     build_heatmap_recommendations,
 )
-from youtube_client import search_music_trends
+from youtube_cache import cached_music_trends
 
 def build_month_options(video_df: pd.DataFrame) -> list[str]:
     if video_df is None or video_df.empty or video_df["published_at"].dropna().empty:
@@ -174,7 +174,7 @@ def render_momentum_planner(video_df: pd.DataFrame, settings: dict[str, str]) ->
     global_franchises = build_franchise_heatmap_rows(video_df)
     heatmap_recommendations = build_heatmap_recommendations(monthly_franchises, global_formats)
     trend_queries = build_trend_queries(topic_rows, monthly_df)
-    trend_df, trend_message = search_music_trends(settings, trend_queries) if trend_queries else (None, "No trend queries available yet.")
+    trend_df, trend_message = cached_music_trends(settings, trend_queries) if trend_queries else (None, "No trend queries available yet.")
     momentum_ideas = build_momentum_ideas(topic_rows, trend_df)
 
     col1, col2, col3 = st.columns(3)

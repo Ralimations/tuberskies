@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 
 CALENDAR_PATH = DATA_DIR / "content_calendar.json"
 PATTERN_MEMORY_PATH = DATA_DIR / "pattern_memory.json"
+DATABASE_PATH = DATA_DIR / "studio.db"
 ENV_PATH = BASE_DIR / ".env"
 
 DEFAULT_CALENDAR_ROWS = [
@@ -46,14 +48,68 @@ LEGACY_STAGE_MAP = {
 }
 
 
-def load_calendar() -> pd.DataFrame:
-    if not CALENDAR_PATH.exists():
-        save_calendar(pd.DataFrame(DEFAULT_CALENDAR_ROWS))
+def _connect_database() -> sqlite3.Connection:
+    connection = sqlite3.connect(DATABASE_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
 
-    with CALENDAR_PATH.open("r", encoding="utf-8") as file:
-        rows = json.load(file)
 
-    frame = pd.DataFrame(rows)
+def initialize_database() -> None:
+    with _connect_database() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS content_calendar (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                title TEXT NOT NULL DEFAULT '',
+                stage TEXT NOT NULL DEFAULT 'Song Idea',
+                priority TEXT NOT NULL DEFAULT 'Medium',
+                content_pillar TEXT NOT NULL DEFAULT '',
+                target_upload_date TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pattern_memory_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint TEXT NOT NULL UNIQUE,
+                generated_at TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS app_kv (
+                key TEXT PRIMARY KEY,
+                value_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS api_cache (
+                cache_key TEXT PRIMARY KEY,
+                cache_date TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                message TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.commit()
+
+    _migrate_json_calendar_if_needed()
+    _migrate_json_pattern_memory_if_needed()
+
+
+def _normalize_calendar_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if frame.empty:
         frame = pd.DataFrame(DEFAULT_CALENDAR_ROWS)
 
@@ -77,7 +133,7 @@ def load_calendar() -> pd.DataFrame:
     return frame[["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"]]
 
 
-def save_calendar(df: pd.DataFrame) -> None:
+def _serialize_calendar_frame(df: pd.DataFrame) -> pd.DataFrame:
     sanitized_df = df.copy()
     sanitized_df["title"] = sanitized_df["title"].fillna("").astype(str)
     sanitized_df["stage"] = (
@@ -94,13 +150,230 @@ def save_calendar(df: pd.DataFrame) -> None:
         sanitized_df["target_upload_date"], errors="coerce"
     ).dt.strftime("%Y-%m-%d")
     sanitized_df["target_upload_date"] = sanitized_df["target_upload_date"].fillna("")
+    return sanitized_df[["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"]]
 
-    sanitized = sanitized_df.to_dict(orient="records")
-    with CALENDAR_PATH.open("w", encoding="utf-8") as file:
-        json.dump(sanitized, file, indent=2)
+
+def _load_calendar_rows_from_json() -> list[dict[str, Any]]:
+    if not CALENDAR_PATH.exists():
+        return DEFAULT_CALENDAR_ROWS
+    with CALENDAR_PATH.open("r", encoding="utf-8") as file:
+        rows = json.load(file)
+    return rows if isinstance(rows, list) else DEFAULT_CALENDAR_ROWS
+
+
+def _migrate_json_calendar_if_needed() -> None:
+    with _connect_database() as connection:
+        migrated = connection.execute(
+            "SELECT value_json FROM app_kv WHERE key = ?",
+            ("calendar_json_migrated",),
+        ).fetchone()
+        if migrated:
+            return
+
+        count = connection.execute("SELECT COUNT(*) FROM content_calendar").fetchone()[0]
+        if count:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO app_kv (key, value_json, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                """,
+                ("calendar_json_migrated", "true"),
+            )
+            connection.commit()
+            return
+
+        frame = _serialize_calendar_frame(_normalize_calendar_frame(pd.DataFrame(_load_calendar_rows_from_json())))
+        rows = frame.to_dict(orient="records")
+        connection.executemany(
+            """
+            INSERT INTO content_calendar (
+                sort_order, title, stage, priority, content_pillar, target_upload_date, notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    index,
+                    row["title"],
+                    row["stage"],
+                    row["priority"],
+                    row["content_pillar"],
+                    row["target_upload_date"],
+                    row["notes"],
+                )
+                for index, row in enumerate(rows)
+            ],
+        )
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO app_kv (key, value_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            """,
+            ("calendar_json_migrated", "true"),
+        )
+        connection.commit()
+
+
+def load_calendar() -> pd.DataFrame:
+    initialize_database()
+    with _connect_database() as connection:
+        rows = connection.execute(
+            """
+            SELECT title, stage, priority, content_pillar, target_upload_date, notes
+            FROM content_calendar
+            ORDER BY sort_order, id
+            """
+        ).fetchall()
+
+    frame = pd.DataFrame([dict(row) for row in rows])
+    return _normalize_calendar_frame(frame)
+
+
+def save_calendar(df: pd.DataFrame) -> None:
+    initialize_database()
+    sanitized_df = _serialize_calendar_frame(df)
+    rows = sanitized_df.to_dict(orient="records")
+    with _connect_database() as connection:
+        connection.execute("DELETE FROM content_calendar")
+        connection.executemany(
+            """
+            INSERT INTO content_calendar (
+                sort_order, title, stage, priority, content_pillar, target_upload_date, notes
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    index,
+                    row["title"],
+                    row["stage"],
+                    row["priority"],
+                    row["content_pillar"],
+                    row["target_upload_date"],
+                    row["notes"],
+                )
+                for index, row in enumerate(rows)
+            ],
+        )
+        connection.commit()
 
 
 def load_pattern_memory() -> dict[str, Any]:
+    initialize_database()
+    with _connect_database() as connection:
+        rows = connection.execute(
+            """
+            SELECT snapshot_json
+            FROM pattern_memory_snapshots
+            ORDER BY id DESC
+            LIMIT 25
+            """
+        ).fetchall()
+
+    snapshots: list[dict[str, Any]] = []
+    for row in reversed(rows):
+        try:
+            snapshot = json.loads(row["snapshot_json"])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(snapshot, dict):
+            snapshots.append(snapshot)
+
+    if not snapshots:
+        return {"history": [], "latest": None}
+
+    return {"history": snapshots, "latest": snapshots[-1]}
+
+
+def save_pattern_memory(memory: dict[str, Any]) -> None:
+    initialize_database()
+    history = memory.get("history", [])
+    latest = memory.get("latest")
+    snapshots = [item for item in history[-25:] if isinstance(item, dict)]
+    if isinstance(latest, dict) and latest not in snapshots:
+        snapshots.append(latest)
+
+    with _connect_database() as connection:
+        for snapshot in snapshots[-25:]:
+            fingerprint = str(snapshot.get("fingerprint", "")).strip()
+            if not fingerprint:
+                continue
+            generated_at = str(snapshot.get("generated_at", ""))
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO pattern_memory_snapshots (
+                    fingerprint, generated_at, snapshot_json
+                )
+                VALUES (?, ?, ?)
+                """,
+                (fingerprint, generated_at, json.dumps(snapshot, ensure_ascii=False)),
+            )
+        connection.execute(
+            """
+            DELETE FROM pattern_memory_snapshots
+            WHERE id NOT IN (
+                SELECT id FROM pattern_memory_snapshots ORDER BY id DESC LIMIT 25
+            )
+            """
+        )
+        connection.commit()
+
+
+def load_api_cache(cache_key: str, cache_date: str | None = None) -> dict[str, Any] | None:
+    initialize_database()
+    with _connect_database() as connection:
+        if cache_date:
+            row = connection.execute(
+                """
+                SELECT cache_key, cache_date, payload_json, message, updated_at
+                FROM api_cache
+                WHERE cache_key = ? AND cache_date = ?
+                """,
+                (cache_key, cache_date),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                """
+                SELECT cache_key, cache_date, payload_json, message, updated_at
+                FROM api_cache
+                WHERE cache_key = ?
+                """,
+                (cache_key,),
+            ).fetchone()
+
+    if row is None:
+        return None
+
+    try:
+        payload = json.loads(row["payload_json"])
+    except json.JSONDecodeError:
+        payload = None
+
+    return {
+        "cache_key": row["cache_key"],
+        "cache_date": row["cache_date"],
+        "payload": payload,
+        "message": row["message"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def save_api_cache(cache_key: str, cache_date: str, payload: Any, message: str = "") -> None:
+    initialize_database()
+    with _connect_database() as connection:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO api_cache (
+                cache_key, cache_date, payload_json, message, updated_at
+            )
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (cache_key, cache_date, json.dumps(payload, ensure_ascii=False), message),
+        )
+        connection.commit()
+
+
+def _load_pattern_memory_from_json() -> dict[str, Any]:
     if not PATTERN_MEMORY_PATH.exists():
         return {"history": [], "latest": None}
 
@@ -109,21 +382,61 @@ def load_pattern_memory() -> dict[str, Any]:
 
     if not isinstance(payload, dict):
         return {"history": [], "latest": None}
-
     history = payload.get("history", [])
     latest = payload.get("latest")
-    if not isinstance(history, list):
-        history = []
-
-    return {"history": history, "latest": latest}
+    return {"history": history if isinstance(history, list) else [], "latest": latest}
 
 
-def save_pattern_memory(memory: dict[str, Any]) -> None:
-    history = memory.get("history", [])
-    latest = memory.get("latest")
-    payload = {"history": history[-25:], "latest": latest}
-    with PATTERN_MEMORY_PATH.open("w", encoding="utf-8") as file:
-        json.dump(payload, file, indent=2)
+def _migrate_json_pattern_memory_if_needed() -> None:
+    with _connect_database() as connection:
+        migrated = connection.execute(
+            "SELECT value_json FROM app_kv WHERE key = ?",
+            ("pattern_memory_json_migrated",),
+        ).fetchone()
+        if migrated:
+            return
+
+        count = connection.execute("SELECT COUNT(*) FROM pattern_memory_snapshots").fetchone()[0]
+        if count:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO app_kv (key, value_json, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                """,
+                ("pattern_memory_json_migrated", "true"),
+            )
+            connection.commit()
+            return
+
+        memory = _load_pattern_memory_from_json()
+        history = memory.get("history", [])
+        latest = memory.get("latest")
+        snapshots = [item for item in history[-25:] if isinstance(item, dict)]
+        if isinstance(latest, dict) and latest not in snapshots:
+            snapshots.append(latest)
+
+        for snapshot in snapshots[-25:]:
+            fingerprint = str(snapshot.get("fingerprint", "")).strip()
+            if not fingerprint:
+                continue
+            generated_at = str(snapshot.get("generated_at", ""))
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO pattern_memory_snapshots (
+                    fingerprint, generated_at, snapshot_json
+                )
+                VALUES (?, ?, ?)
+                """,
+                (fingerprint, generated_at, json.dumps(snapshot, ensure_ascii=False)),
+            )
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO app_kv (key, value_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            """,
+            ("pattern_memory_json_migrated", "true"),
+        )
+        connection.commit()
 
 
 def load_vault_settings() -> dict[str, str]:

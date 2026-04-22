@@ -20,7 +20,7 @@ from aria_app.features.command_center_parts.upload_momentum import (
     render_momentum_planner,
 )
 from aria_app.features.command_center_parts.upload_radar import render_next_cover_radar
-from youtube_client import search_music_trends
+from youtube_cache import cached_music_trends
 
 def render_upload_lab(video_df: pd.DataFrame, upload_message: str) -> None:
     render_panel_header(
@@ -140,7 +140,7 @@ def render_upload_lab(video_df: pd.DataFrame, upload_message: str) -> None:
     monthly_df = filter_videos_for_month(video_df, selected_month) if selected_month else video_df.head(0)
     monthly_topics = extract_topic_rows(monthly_df) if not monthly_df.empty else []
     trend_queries = build_trend_queries(monthly_topics, monthly_df) if not monthly_df.empty else []
-    trend_df, _ = search_music_trends(st.session_state.vault_settings, trend_queries) if trend_queries else (None, "No trend queries")
+    trend_df, _ = cached_music_trends(st.session_state.vault_settings, trend_queries) if trend_queries else (None, "No trend queries")
     render_next_cover_radar(
         monthly_df=monthly_df,
         monthly_franchises=build_franchise_heatmap_rows(monthly_df) if not monthly_df.empty else [],

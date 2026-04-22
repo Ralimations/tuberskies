@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from urllib.parse import quote
+
 import streamlit as st
 
+from .navigation import NAV_GROUPS, PAGE_LABELS
 from .theme import APP_CSS
-from .navigation import PAGE_LABELS
 
 
 QUICK_JUMP_TARGETS = {
@@ -48,36 +50,54 @@ def inject_theme() -> None:
 
 
 def render_hero() -> None:
-    st.markdown(
+    return
+
+
+def render_header_navigation() -> str:
+    query_view = st.query_params.get("view", st.session_state.get("selected_view", PAGE_LABELS[0]))
+    if isinstance(query_view, list):
+        query_view = query_view[0] if query_view else PAGE_LABELS[0]
+    selected_view = str(query_view) if str(query_view) in PAGE_LABELS else PAGE_LABELS[0]
+    st.session_state.selected_view = selected_view
+
+    group_markup = ""
+    for group, labels in NAV_GROUPS.items():
+        links = "".join(
+            f"""
+            <a class="header-menu-link {'active' if label == selected_view else ''}" href="?view={quote(label)}">
+                {label}
+            </a>
+            """
+            for label in labels
+        )
+        group_markup += f"""
+        <div class="header-menu-group">
+            <div class="header-menu-label">{group}</div>
+            <div class="header-menu-links">{links}</div>
+        </div>
         """
+
+    st.markdown(
+        f"""
         <div class="appbar-shell">
-            <div class="appbar-left">
-                <div class="appbar-mark">A</div>
-                <div>
-                    <div class="appbar-title">A.R.I.A. Analytics</div>
-                    <div class="appbar-copy">Signal-first workspace for channel decisions.</div>
+            <div class="appbar-top">
+                <div class="appbar-left">
+                    <div class="appbar-mark">A</div>
+                    <div>
+                        <div class="appbar-title">A.R.I.A. Analytics</div>
+                        <div class="appbar-copy">Algorithmic Retention &amp; Intelligence Assistant.</div>
+                    </div>
                 </div>
+                <div class="appbar-current">{selected_view}</div>
             </div>
-            <div class="appbar-nav-anchor">Navigation</div>
+            <div class="header-menu-shell">
+                {group_markup}
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-
-def render_header_navigation() -> str:
-    if st.session_state.get("selected_view") not in PAGE_LABELS:
-        st.session_state.selected_view = PAGE_LABELS[0]
-
-    selected_view = st.segmented_control(
-        "Studio Areas",
-        options=PAGE_LABELS,
-        key="selected_view",
-        label_visibility="collapsed",
-    )
-    if selected_view is None:
-        selected_view = st.session_state.get("selected_view", PAGE_LABELS[0])
-    return str(selected_view)
+    return selected_view
 
 
 def render_quick_jump_bar(selected_view: str) -> None:

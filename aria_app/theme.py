@@ -42,7 +42,7 @@ APP_CSS = """
 
 .block-container {
     max-width: 1380px;
-    padding: 0 28px 40px 28px;
+    padding: 156px 28px 40px 28px;
 }
 
 h1, h2, h3, p, label, .stMarkdown, .stCaption {
@@ -51,19 +51,28 @@ h1, h2, h3, p, label, .stMarkdown, .stCaption {
 }
 
 .appbar-shell {
-    min-height: 64px;
-    margin: 0 -28px 0 -28px;
-    padding: 0 28px;
+    width: min(1180px, calc(100% - 32px));
+    min-height: 116px;
+    padding: 12px 16px;
+    display: grid;
+    gap: 10px;
+    border: 1px solid rgba(222, 223, 218, 0.92);
+    border-radius: 26px;
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 10px 28px rgba(20, 21, 22, 0.08);
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 80;
+}
+
+.appbar-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    border-bottom: 1px solid var(--line);
-    background: rgba(247, 247, 244, 0.92);
-    backdrop-filter: blur(14px);
-    position: sticky;
-    top: 0;
-    z-index: 80;
+    gap: 16px;
 }
 
 .appbar-left {
@@ -99,52 +108,55 @@ h1, h2, h3, p, label, .stMarkdown, .stCaption {
     line-height: 1.35;
 }
 
-.appbar-nav-anchor {
+.appbar-current {
     color: var(--muted);
     font-size: 0.78rem;
     font-weight: 640;
     text-transform: uppercase;
 }
 
-.header-nav-shell {
-    margin-bottom: 0.25rem;
+.header-menu-shell {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
 }
 
-.header-nav-title {
-    color: var(--ink);
-    font-size: 1.75rem;
-    font-weight: 720;
-    line-height: 1.1;
+.header-menu-group {
+    display: grid;
+    gap: 5px;
+    padding: 7px 9px;
+    border: 1px solid var(--line-soft);
+    border-radius: 18px;
+    background: rgba(247, 247, 244, 0.64);
 }
 
-.header-nav-copy {
-    color: var(--muted);
-    font-size: 0.92rem;
-    margin-top: 4px;
+.header-menu-label {
+    color: var(--faint);
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
 }
 
-[data-testid="stSegmentedControl"]:has([aria-label="Studio Areas"]) {
-    position: sticky;
-    top: 64px;
-    z-index: 79;
-    margin: 0 -28px 24px -28px;
-    padding: 0 28px;
-    background: rgba(247, 247, 244, 0.92);
-    backdrop-filter: blur(14px);
+.header-menu-links {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
 }
 
-[data-testid="stSegmentedControl"]:has([aria-label="Studio Areas"]) [role="radiogroup"] {
-    gap: 0;
-    border-bottom: 1px solid var(--line);
-}
-
-[data-testid="stSegmentedControl"]:has([aria-label="Studio Areas"]) label {
-    min-height: 42px;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
+.header-menu-link {
+    padding: 5px 8px;
+    border-radius: 999px;
     color: var(--muted) !important;
-    font-weight: 620 !important;
+    font-size: 0.78rem;
+    font-weight: 640;
+    text-decoration: none !important;
+}
+
+.header-menu-link:hover,
+.header-menu-link.active {
+    background: var(--ink);
+    color: white !important;
 }
 
 .jumpbar-shell {
@@ -474,7 +486,7 @@ h1, h2, h3, p, label, .stMarkdown, .stCaption {
 
 .subnav-wrap [data-testid="stSegmentedControl"] {
     position: sticky;
-    top: 107px;
+    top: 148px;
     z-index: 78;
     margin: 0 -28px 18px -28px;
     padding: 8px 28px 0 28px;
@@ -495,22 +507,13 @@ h1, h2, h3, p, label, .stMarkdown, .stCaption {
 
 @media (max-width: 900px) {
     .block-container {
-        padding-left: 16px;
-        padding-right: 16px;
+        padding: 184px 16px 40px 16px;
     }
 
     .appbar-shell {
-        margin-left: -16px;
-        margin-right: -16px;
-        padding-left: 16px;
-        padding-right: 16px;
-    }
-
-    [data-testid="stSegmentedControl"]:has([aria-label="Studio Areas"]) {
-        margin-left: -16px;
-        margin-right: -16px;
-        padding-left: 16px;
-        padding-right: 16px;
+        width: calc(100% - 18px);
+        padding-left: 12px;
+        padding-right: 12px;
     }
 
     .subnav-wrap [data-testid="stSegmentedControl"] {
@@ -518,6 +521,10 @@ h1, h2, h3, p, label, .stMarkdown, .stCaption {
         margin-right: -16px;
         padding-left: 16px;
         padding-right: 16px;
+    }
+
+    .header-menu-shell {
+        grid-template-columns: 1fr 1fr;
     }
 
     .creator-hero,
