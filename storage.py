@@ -562,6 +562,7 @@ def load_vault_settings() -> dict[str, str]:
         "youtube_client_id": str(values.get("YOUTUBE_CLIENT_ID", "")),
         "youtube_client_secret": str(values.get("YOUTUBE_CLIENT_SECRET", "")),
         "ollama_model": str(values.get("OLLAMA_MODEL", "gemma")),
+        "ollama_vision_model": str(values.get("OLLAMA_VISION_MODEL", "")),
     }
 
 

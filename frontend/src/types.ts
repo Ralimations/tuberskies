@@ -45,6 +45,18 @@ export type BootstrapPayload = {
   videoRows: Record<string, unknown>[];
   calendarRows: Record<string, unknown>[];
   messages: Record<string, string>;
+  cache: CacheFreshnessRow[];
+};
+
+export type CacheFreshnessRow = {
+  dataset: string;
+  cache_key: string;
+  status: string;
+  today_date: string;
+  latest_data_date: string;
+  payload_kind: string;
+  updated_at: string;
+  message: string;
 };
 
 export type RepertoirePayload = {
@@ -66,7 +78,11 @@ export type VaultPayload = {
     youtube_client_id: string;
     youtube_client_secret: string;
     ollama_model: string;
+    ollama_vision_model: string;
   };
+  ollama_models: string[];
+  ollama_vision_models: string[];
+  recommended_free_vision_models: { name: string; label: string }[];
   connection: {
     api_key: boolean;
     oauth_client: boolean;
@@ -74,16 +90,7 @@ export type VaultPayload = {
     connected: boolean;
     message: string;
   };
-  cache: {
-    dataset: string;
-    cache_key: string;
-    status: string;
-    today_date: string;
-    latest_data_date: string;
-    payload_kind: string;
-    updated_at: string;
-    message: string;
-  }[];
+  cache: CacheFreshnessRow[];
 };
 
 export type YoutubeRefreshPayload = {
@@ -134,4 +141,47 @@ export type AnalyticsPayload = {
     path: string;
   }[];
   messages: Record<string, string>;
+};
+
+export type ShortsPlanClip = {
+  segment_id?: number;
+  start?: number;
+  end?: number;
+  title?: string;
+  hook?: string;
+  caption_lines?: string[];
+  reason?: string;
+  score?: number;
+};
+
+export type ShortsAiAnalyzePayload = {
+  main_video_path: string;
+  broll_video_path: string;
+  segments: Record<string, unknown>[];
+  transcriptRows: Record<string, unknown>[];
+  visualNotes: string;
+  aiPlan: {
+    video_title?: string;
+    shorts?: ShortsPlanClip[];
+    posting_notes?: string[];
+  };
+  rawModelResponse: string;
+};
+
+export type ShortsRenderPayload = {
+  success: boolean;
+  message: string;
+  outputs: string[];
+};
+
+export type ShortsPreviewPayload = {
+  success: boolean;
+  message: string;
+  frames: {
+    index: number;
+    start: number;
+    end: number;
+    timestamp: number;
+    imageDataUrl: string;
+  }[];
 };

@@ -1,4 +1,4 @@
-import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, VaultPayload, YoutubeRefreshPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPreviewPayload, ShortsRenderPayload, VaultPayload, YoutubeRefreshPayload } from "./types";
 
 export async function loadBootstrap(): Promise<BootstrapPayload> {
   const response = await fetch("/api/bootstrap");
@@ -160,4 +160,62 @@ export function scoreIdeation(topic: string, workingTitle: string): Promise<Idea
 
 export function loadAnalytics(): Promise<AnalyticsPayload> {
   return requestJson("/api/analytics");
+}
+
+export function analyzeShortsWithAi(payload: {
+  mainVideo: File;
+  brollVideo?: File | null;
+  whisperModel: string;
+  layoutMode: string;
+  objective: string;
+  visionModel?: string;
+}): Promise<ShortsAiAnalyzePayload> {
+  const formData = new FormData();
+  formData.append("main_video", payload.mainVideo);
+  if (payload.brollVideo) {
+    formData.append("broll_video", payload.brollVideo);
+  }
+  formData.append("whisper_model", payload.whisperModel);
+  formData.append("layout_mode", payload.layoutMode);
+  formData.append("objective", payload.objective);
+  formData.append("vision_model", payload.visionModel ?? "");
+  return requestJson("/api/shorts/ai-analyze", {
+    method: "POST",
+    body: formData
+  });
+}
+
+export function renderShortsFromAiPlan(payload: {
+  mainVideoPath: string;
+  brollVideoPath?: string;
+  shorts: NonNullable<ShortsAiAnalyzePayload["aiPlan"]["shorts"]>;
+  layoutMode: string;
+  textColor: string;
+}): Promise<ShortsRenderPayload> {
+  return requestJson("/api/shorts/render", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      main_video_path: payload.mainVideoPath,
+      broll_video_path: payload.brollVideoPath ?? "",
+      shorts: payload.shorts,
+      layout_mode: payload.layoutMode,
+      text_color: payload.textColor,
+      add_outline: true
+    })
+  });
+}
+
+export function previewShortsFromAiPlan(payload: {
+  mainVideoPath: string;
+  shorts: NonNullable<ShortsAiAnalyzePayload["aiPlan"]["shorts"]>;
+}): Promise<ShortsPreviewPayload> {
+  return requestJson("/api/shorts/preview-frames", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      main_video_path: payload.mainVideoPath,
+      shorts: payload.shorts
+    })
+  });
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import textwrap
+import base64
 import json
 from datetime import date, datetime
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Any
 
 import ollama
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -25,6 +26,7 @@ from aria_app.features.command_center_parts.keyword_tools import build_keyword_o
 from aria_app.features.command_center_parts.upload_metrics import build_upload_takeaways
 from aria_app.pattern_memory import refresh_pattern_memory
 from mock_data import generate_analytics_data
+from shorts_architect import SHORTS_OUTPUT_DIR, SHORTS_WORKDIR, analyze_video_pipeline, preview_shorts_frames, render_ai_shorts, sample_video_frames, save_uploaded_bytes
 from storage import PRIORITIES, STAGES, list_api_cache_rows, load_calendar, load_vault_settings, save_calendar, save_vault_settings
 from youtube_cache import (
     cached_channel_profile,
@@ -108,6 +110,7 @@ class VaultSettingsRequest(BaseModel):
     youtube_client_id: str = ""
     youtube_client_secret: str = ""
     ollama_model: str = "gemma"
+    ollama_vision_model: str = ""
 
 
 class CalendarRow(BaseModel):
@@ -158,7 +161,38 @@ class CommentPublishRequest(BaseModel):
     reviewed: bool = False
 
 
+class ShortsPlanClip(BaseModel):
+    segment_id: int | None = None
+    start: float = 0.0
+    end: float = 35.0
+    title: str = ""
+    hook: str = ""
+    caption_lines: list[str] = []
+    reason: str = ""
+    score: float = 0.0
+
+
+class ShortsRenderRequest(BaseModel):
+    main_video_path: str
+    broll_video_path: str = ""
+    shorts: list[ShortsPlanClip]
+    layout_mode: str = "Solo Mode"
+    text_color: str = "#ffd166"
+    add_outline: bool = True
+
+
+class ShortsPreviewRequest(BaseModel):
+    main_video_path: str
+    shorts: list[ShortsPlanClip]
+
+
 ACTION_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "creator_action_log.jsonl"
+FREE_VISION_MODELS = [
+    {"name": "moondream", "label": "moondream - lightweight free vision model"},
+    {"name": "minicpm-v", "label": "minicpm-v - stronger free vision model"},
+    {"name": "llava:7b", "label": "llava:7b - classic free vision model"},
+]
+VISION_MODEL_PREFIXES = ("moondream", "minicpm-v", "llava", "llama3.2-vision", "granite3.2-vision", "mistral-small3.1")
 
 
 def _log_action(action: str, payload: dict[str, object]) -> None:
@@ -166,6 +200,66 @@ def _log_action(action: str, payload: dict[str, object]) -> None:
     row = {"created_at": datetime.now().isoformat(timespec="seconds"), "action": action, "payload": payload}
     with ACTION_LOG_PATH.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _model_name(model: Any) -> str:
+    if isinstance(model, dict):
+        return str(model.get("model") or model.get("name") or "").strip()
+    return str(getattr(model, "model", "") or getattr(model, "name", "") or "").strip()
+
+
+def _list_ollama_models() -> list[str]:
+    try:
+        response = ollama.list()
+    except Exception:
+        return []
+    models = response.get("models", []) if isinstance(response, dict) else getattr(response, "models", [])
+    return sorted({_model_name(model) for model in models if _model_name(model)})
+
+
+def _is_known_free_vision_model(model_name: str) -> bool:
+    clean_name = model_name.lower().split(":")[0]
+    return any(clean_name == prefix or model_name.lower().startswith(f"{prefix}:") for prefix in VISION_MODEL_PREFIXES)
+
+
+def _list_free_vision_models(installed_models: list[str]) -> list[str]:
+    return [model for model in installed_models if _is_known_free_vision_model(model)]
+
+
+def _resolve_shorts_path(raw_path: str, allow_empty: bool = False) -> Path | None:
+    if not raw_path and allow_empty:
+        return None
+    path = Path(raw_path).expanduser().resolve()
+    allowed_roots = [SHORTS_WORKDIR.resolve(), SHORTS_OUTPUT_DIR.resolve()]
+    if not any(path == root or root in path.parents for root in allowed_roots):
+        raise ValueError("Shorts render paths must come from the local Shorts workspace.")
+    if not path.exists():
+        raise ValueError(f"Shorts file was not found: {path}")
+    return path
+
+
+def _extract_json_object(raw_text: str) -> dict[str, Any] | None:
+    cleaned = raw_text.strip()
+    if not cleaned:
+        return None
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        cleaned = cleaned.removeprefix("json").strip()
+    try:
+        payload = json.loads(cleaned)
+        return payload if isinstance(payload, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start >= 0 and end > start:
+        try:
+            payload = json.loads(cleaned[start : end + 1])
+            return payload if isinstance(payload, dict) else None
+        except json.JSONDecodeError:
+            return None
+    return None
 
 
 def _split_tags(raw_tags: str) -> list[str]:
@@ -365,6 +459,7 @@ def _build_cache_freshness_rows() -> list[dict[str, str]]:
 def _load_context() -> dict[str, Any]:
     settings = load_vault_settings()
     calendar_df = load_calendar()
+    cache_freshness = _build_cache_freshness_rows()
     live_df, live_message = cached_live_analytics(settings)
     video_df, video_message = cached_video_performance(settings)
     live_profile, profile_message = (
@@ -395,6 +490,7 @@ def _load_context() -> dict[str, Any]:
         "upload_takeaways": upload_takeaways,
         "pattern_memory": pattern_memory,
         "today_payload": today_payload,
+        "cache_freshness": cache_freshness,
     }
 
 
@@ -407,6 +503,122 @@ def _preview_frame(frame: pd.DataFrame, columns: list[str], rows: int = 8) -> st
     return frame[available_columns].head(rows).to_csv(index=False)
 
 
+def _chat_freshness_context(cache_rows: list[dict[str, str]]) -> str:
+    if not cache_rows:
+        return "No YouTube cache freshness rows are available yet."
+
+    important = {"Analytics", "Upload Performance", "Channel Profile"}
+    lines: list[str] = []
+    for row in cache_rows:
+        if row.get("dataset") not in important:
+            continue
+        latest = row.get("latest_data_date") or "none"
+        today = row.get("today_date") or "not checked"
+        lines.append(
+            f"- {row.get('dataset')}: {row.get('status')} | latest usable data {latest} | today {today}"
+        )
+
+    return "\n".join(lines) if lines else "No primary YouTube cache rows are available yet."
+
+
+def _frame_visual_notes(frame_paths: list[Path], vision_model: str) -> str:
+    if not frame_paths or not vision_model.strip():
+        return "No visual model was provided, so this run uses audio, transcript, and timing signals only."
+    try:
+        images = [base64.b64encode(path.read_bytes()).decode("ascii") for path in frame_paths[:6]]
+        response = ollama.chat(
+            model=vision_model.strip(),
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "These are sampled frames from a music performance video. "
+                        "Describe visual energy, framing, facial/performance intensity, and any moments that may work as Shorts."
+                    ),
+                    "images": images,
+                }
+            ],
+        )
+        content = str(response.get("message", {}).get("content", "")).strip()
+        return content or "The visual model returned no visual notes."
+    except Exception as error:
+        return f"Visual pass skipped: {error}"
+
+
+def _build_ai_shorts_prompt(
+    segments: list[dict[str, float]],
+    transcript_df: pd.DataFrame,
+    source_name: str,
+    layout_mode: str,
+    objective: str,
+    visual_notes: str,
+) -> str:
+    transcript_preview = _preview_frame(
+        transcript_df,
+        ["segment_id", "start_time", "end_time", "text"],
+        rows=40,
+    )
+    return textwrap.dedent(
+        f"""
+        You are A.R.I.A. acting as an AI Shorts director for Ralskies.
+        You are choosing Shorts from a full music performance using audio-energy windows, transcription, and optional visual notes.
+        Do not ask the creator to manually choose cuts. Pick the cuts yourself.
+
+        Source video: {source_name}
+        Requested layout: {layout_mode}
+        Objective: {objective}
+
+        Detected high-energy windows:
+        {json.dumps(segments, indent=2)}
+
+        Transcript rows:
+        {transcript_preview}
+
+        Visual notes:
+        {visual_notes}
+
+        Return only valid JSON with this shape:
+        {{
+          "video_title": "overall source video title idea",
+          "shorts": [
+            {{
+              "segment_id": 1,
+              "start": 0.0,
+              "end": 35.0,
+              "title": "YouTube Shorts title",
+              "hook": "first caption / on-screen hook",
+              "caption_lines": ["short subtitle line", "another subtitle line"],
+              "reason": "why this cut should retain viewers",
+              "score": 88
+            }}
+          ],
+          "posting_notes": ["note about title, pinned comment, or sequencing"]
+        }}
+        Keep captions natural for music. Prefer emotional, theatrical, high-retention hooks.
+        """
+    ).strip()
+
+
+def _fallback_ai_shorts_plan(segments: list[dict[str, float]], transcript_df: pd.DataFrame, source_name: str, objective: str) -> dict[str, Any]:
+    shorts: list[dict[str, Any]] = []
+    for index, segment in enumerate(segments[:5], start=1):
+        rows = transcript_df[transcript_df["segment_id"] == index] if "segment_id" in transcript_df.columns else pd.DataFrame()
+        text = " ".join(rows["text"].fillna("").astype(str).head(2).tolist()).strip()
+        shorts.append(
+            {
+                "segment_id": index,
+                "start": segment.get("start", 0),
+                "end": segment.get("end", 0),
+                "title": f"{source_name[:70]} | {objective}",
+                "hook": text[:90] or "Wait for this vocal moment",
+                "caption_lines": [line for line in [text[:80], text[80:160]] if line],
+                "reason": "Chosen from the highest-energy detected music windows.",
+                "score": round(float(segment.get("score", 0)) * 100, 1),
+            }
+        )
+    return {"video_title": source_name, "shorts": shorts, "posting_notes": ["AI fallback used because the local model did not return valid JSON."]}
+
+
 def _chat_context(payload: dict[str, Any]) -> str:
     analytics_df = payload["analytics_df"]
     video_df = payload["video_df"]
@@ -414,6 +626,7 @@ def _chat_context(payload: dict[str, Any]) -> str:
     today_payload = payload["today_payload"]
     upload_takeaways = payload["upload_takeaways"]
     pattern_snapshot = payload["pattern_memory"].get("latest")
+    freshness_context = textwrap.indent(_chat_freshness_context(payload.get("cache_freshness", [])), "        ")
 
     last_30 = analytics_df.tail(30) if analytics_df is not None else pd.DataFrame()
     views_30 = int(last_30["views"].fillna(0).sum()) if not last_30.empty and "views" in last_30 else 0
@@ -425,6 +638,8 @@ def _chat_context(payload: dict[str, Any]) -> str:
         f"""
         Current Ralskies analytics context:
         - Data source: {payload["source"]}
+        Data freshness:
+        {freshness_context}
         - Last 30 days views: {views_30:,}
         - Last 30 days watch time hours: {watch_hours_30:.1f}
         - Today focus: {today_payload.get("focus_title", "unknown")}
@@ -552,6 +767,7 @@ def bootstrap() -> dict[str, Any]:
             "videoRows": video_df.head(20),
             "calendarRows": calendar_df,
             "messages": payload["messages"],
+            "cache": payload["cache_freshness"],
         }
     )
 
@@ -658,8 +874,12 @@ def analytics() -> dict[str, Any]:
 def vault() -> dict[str, Any]:
     settings = load_vault_settings()
     status = get_connection_status(settings)
+    ollama_models = _list_ollama_models()
     return {
         "settings": settings,
+        "ollama_models": ollama_models,
+        "ollama_vision_models": _list_free_vision_models(ollama_models),
+        "recommended_free_vision_models": FREE_VISION_MODELS,
         "connection": {
             "api_key": bool(settings.get("youtube_api_key", "").strip()),
             "oauth_client": bool(settings.get("youtube_client_id", "").strip() and settings.get("youtube_client_secret", "").strip()),
@@ -680,6 +900,7 @@ def save_vault(request: VaultSettingsRequest) -> dict[str, Any]:
             "YOUTUBE_CLIENT_ID": request.youtube_client_id,
             "YOUTUBE_CLIENT_SECRET": request.youtube_client_secret,
             "OLLAMA_MODEL": request.ollama_model,
+            "OLLAMA_VISION_MODEL": request.ollama_vision_model,
         }
     )
     return vault()
@@ -864,3 +1085,125 @@ def publish_comment(request: CommentPublishRequest) -> dict[str, Any]:
     if success:
         _log_action("comment_reply", {"comment_id": request.comment_id})
     return {"success": success, "message": message}
+
+
+@app.post("/api/shorts/ai-analyze")
+def analyze_shorts_with_ai(
+    main_video: UploadFile = File(...),
+    broll_video: UploadFile | None = File(None),
+    whisper_model: str = Form("small"),
+    layout_mode: str = Form("Solo Mode"),
+    objective: str = Form("Retention hook"),
+    vision_model: str = Form(""),
+) -> dict[str, Any]:
+    settings = load_vault_settings()
+    active_vision_model = vision_model.strip() or settings.get("ollama_vision_model", "").strip()
+    main_path = save_uploaded_bytes(main_video.filename or "main_video.mp4", main_video.file.read(), "main_video")
+    broll_path = (
+        save_uploaded_bytes(broll_video.filename or "broll_video.mp4", broll_video.file.read(), "broll_video")
+        if broll_video is not None
+        else None
+    )
+    segments, transcript_df = analyze_video_pipeline(main_path, whisper_model=whisper_model)
+    frame_paths = sample_video_frames(main_path, frame_count=6)
+    visual_notes = _frame_visual_notes(frame_paths, active_vision_model)
+    prompt = _build_ai_shorts_prompt(
+        segments=segments,
+        transcript_df=transcript_df,
+        source_name=main_video.filename or main_path.name,
+        layout_mode=layout_mode,
+        objective=objective,
+        visual_notes=visual_notes,
+    )
+    model = settings.get("ollama_model", "gemma")
+    raw_response = _assistant_response(prompt, model)
+    ai_plan = _extract_json_object(raw_response) or _fallback_ai_shorts_plan(
+        segments,
+        transcript_df,
+        main_video.filename or main_path.stem,
+        objective,
+    )
+    _log_action(
+        "shorts_ai_analysis",
+        {
+            "main_video": str(main_path),
+            "broll_video": str(broll_path) if broll_path else "",
+            "segment_count": len(segments),
+            "transcript_rows": len(transcript_df),
+            "vision_model": active_vision_model,
+        },
+    )
+    return _json_safe(
+        {
+            "main_video_path": str(main_path),
+            "broll_video_path": str(broll_path) if broll_path else "",
+            "segments": segments,
+            "transcriptRows": transcript_df,
+            "visualNotes": visual_notes,
+            "aiPlan": ai_plan,
+            "rawModelResponse": raw_response,
+        }
+    )
+
+
+@app.post("/api/shorts/render")
+def render_shorts_from_ai_plan(request: ShortsRenderRequest) -> dict[str, Any]:
+    try:
+        main_path = _resolve_shorts_path(request.main_video_path)
+        broll_path = _resolve_shorts_path(request.broll_video_path, allow_empty=True)
+        if main_path is None:
+            return {"success": False, "message": "A main video path is required.", "outputs": []}
+        outputs = render_ai_shorts(
+            main_video_path=main_path,
+            broll_video_path=broll_path,
+            shorts_plan=[clip.dict() for clip in request.shorts],
+            layout_mode=request.layout_mode,
+            text_color=request.text_color,
+            add_outline=request.add_outline,
+        )
+    except Exception as error:
+        return {"success": False, "message": str(error), "outputs": []}
+
+    _log_action(
+        "shorts_ai_render",
+        {
+            "main_video": str(main_path),
+            "broll_video": str(broll_path) if broll_path else "",
+            "output_count": len(outputs),
+        },
+    )
+    return {
+        "success": True,
+        "message": f"Rendered {len(outputs)} Shorts export(s).",
+        "outputs": [str(path) for path in outputs],
+    }
+
+
+@app.post("/api/shorts/preview-frames")
+def preview_shorts_from_ai_plan(request: ShortsPreviewRequest) -> dict[str, Any]:
+    try:
+        main_path = _resolve_shorts_path(request.main_video_path)
+        if main_path is None:
+            return {"success": False, "message": "A main video path is required.", "frames": []}
+        previews = preview_shorts_frames(main_path, [clip.dict() for clip in request.shorts])
+    except Exception as error:
+        return {"success": False, "message": str(error), "frames": []}
+
+    frames = []
+    for preview in previews:
+        frame_path = Path(str(preview["path"]))
+        image_data = base64.b64encode(frame_path.read_bytes()).decode("ascii")
+        frames.append(
+            {
+                "index": preview["index"],
+                "start": preview["start"],
+                "end": preview["end"],
+                "timestamp": preview["timestamp"],
+                "imageDataUrl": f"data:image/jpeg;base64,{image_data}",
+            }
+        )
+    return {
+        "success": True,
+        "message": f"Built {len(frames)} cut preview frame(s).",
+        "frames": frames,
+    }

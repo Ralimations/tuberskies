@@ -23,6 +23,57 @@ def save_uploaded_file(uploaded_file: Any, prefix: str) -> Path:
     return destination
 
 
+def save_uploaded_bytes(filename: str, content: bytes, prefix: str) -> Path:
+    suffix = Path(filename).suffix or ".bin"
+    destination = SHORTS_WORKDIR / f"{prefix}_{uuid.uuid4().hex}{suffix}"
+    destination.write_bytes(content)
+    return destination
+
+
+def sample_video_frames(video_path: Path, frame_count: int = 6) -> list[Path]:
+    from moviepy.editor import VideoFileClip
+
+    frame_paths: list[Path] = []
+    with VideoFileClip(str(video_path)) as clip:
+        duration = max(float(clip.duration or 0), 0)
+        if duration <= 0:
+            return []
+        for index in range(frame_count):
+            timestamp = min(duration - 0.05, duration * ((index + 1) / (frame_count + 1)))
+            frame_path = SHORTS_WORKDIR / f"{video_path.stem}_frame_{index + 1}.jpg"
+            clip.save_frame(str(frame_path), t=max(timestamp, 0))
+            frame_paths.append(frame_path)
+    return frame_paths
+
+
+def preview_shorts_frames(video_path: Path, shorts_plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from moviepy.editor import VideoFileClip
+
+    previews: list[dict[str, Any]] = []
+    with VideoFileClip(str(video_path)) as clip:
+        duration = max(float(clip.duration or 0), 0)
+        if duration <= 0:
+            return []
+        for index, plan in enumerate(shorts_plan, start=1):
+            start = max(0.0, float(plan.get("start", 0) or 0))
+            end = min(duration, float(plan.get("end", start + 35) or start + 35))
+            if end <= start:
+                continue
+            timestamp = min(duration - 0.05, start + ((end - start) / 2))
+            frame_path = SHORTS_WORKDIR / f"{video_path.stem}_cut_{index}_preview_{uuid.uuid4().hex[:8]}.jpg"
+            clip.save_frame(str(frame_path), t=max(timestamp, 0))
+            previews.append(
+                {
+                    "index": index - 1,
+                    "start": round(start, 2),
+                    "end": round(end, 2),
+                    "timestamp": round(timestamp, 2),
+                    "path": str(frame_path),
+                }
+            )
+    return previews
+
+
 def extract_audio_from_video(video_path: Path) -> Path:
     from moviepy.editor import VideoFileClip
 
@@ -256,6 +307,99 @@ def render_shorts(
                             .set_position(("center", canvas_height - 360))
                         )
                         caption_clips.append(text_clip)
+
+                final_clip = CompositeVideoClip([video_layer, *caption_clips], size=(canvas_width, canvas_height))
+                final_clip = final_clip.set_audio(performance_clip.audio)
+                final_clip.write_videofile(
+                    str(output_name),
+                    fps=30,
+                    codec="libx264",
+                    audio_codec="aac",
+                    logger=None,
+                )
+                outputs.append(output_name)
+                final_clip.close()
+        finally:
+            if broll_clip is not None:
+                broll_clip.close()
+
+    return outputs
+
+
+def _fit_vertical_clip(clip: Any, canvas_width: int, canvas_height: int) -> Any:
+    video_layer = clip.resize(height=canvas_height)
+    if video_layer.w > canvas_width:
+        return video_layer.crop(x_center=video_layer.w / 2, width=canvas_width, height=canvas_height)
+    return video_layer.on_color(
+        size=(canvas_width, canvas_height),
+        color=(10, 15, 29),
+        pos=("center", "center"),
+    )
+
+
+def render_ai_shorts(
+    main_video_path: Path,
+    broll_video_path: Path | None,
+    shorts_plan: list[dict[str, Any]],
+    layout_mode: str,
+    text_color: str,
+    font_name: str = "Arial",
+    add_outline: bool = True,
+) -> list[Path]:
+    from moviepy.editor import ColorClip, CompositeVideoClip, TextClip, VideoFileClip
+
+    outputs: list[Path] = []
+    canvas_width = 1080
+    canvas_height = 1920
+
+    with VideoFileClip(str(main_video_path)) as main_clip:
+        broll_clip = VideoFileClip(str(broll_video_path)) if broll_video_path else None
+        try:
+            for index, plan in enumerate(shorts_plan, start=1):
+                clip_start = max(0.0, float(plan.get("start", 0) or 0))
+                clip_end = min(float(main_clip.duration or 0), float(plan.get("end", clip_start + 35) or clip_start + 35))
+                if clip_end <= clip_start:
+                    continue
+
+                performance_clip = main_clip.subclip(clip_start, clip_end)
+                output_name = SHORTS_OUTPUT_DIR / f"ai_short_{index}_{uuid.uuid4().hex[:8]}.mp4"
+
+                if layout_mode == "Solo Mode":
+                    video_layer = _fit_vertical_clip(performance_clip, canvas_width, canvas_height)
+                else:
+                    if broll_clip is None:
+                        raise ValueError("Duet Mode requires a B-Roll / Reference Video upload.")
+                    broll_start = min(clip_start, max(float(broll_clip.duration or 0) - 0.1, 0))
+                    broll_end = min(broll_start + performance_clip.duration, float(broll_clip.duration or 0))
+                    if broll_end <= broll_start:
+                        raise ValueError("The B-Roll / Reference Video is too short for this selected cut.")
+                    duet_clip = broll_clip.subclip(broll_start, broll_end)
+                    top = duet_clip.resize(width=canvas_width).crop(width=canvas_width, height=canvas_height // 2)
+                    bottom = performance_clip.resize(width=canvas_width).crop(width=canvas_width, height=canvas_height // 2)
+                    base = ColorClip((canvas_width, canvas_height), color=(10, 15, 29), duration=performance_clip.duration)
+                    video_layer = CompositeVideoClip(
+                        [base, top.set_position((0, 0)), bottom.set_position((0, canvas_height // 2))],
+                        size=(canvas_width, canvas_height),
+                    )
+
+                raw_lines = plan.get("caption_lines") or [plan.get("hook", "")]
+                caption_lines = [str(line).strip() for line in raw_lines if str(line).strip()]
+                if not caption_lines:
+                    caption_lines = ["Wait for this moment"]
+
+                caption_clips = []
+                style_kwargs = _caption_style_kwargs(add_outline, text_color, font_name)
+                line_duration = max(performance_clip.duration / max(len(caption_lines), 1), 1.0)
+                for caption_index, caption in enumerate(caption_lines):
+                    start = min(caption_index * line_duration, max(performance_clip.duration - 0.5, 0))
+                    duration = min(line_duration + 0.25, max(performance_clip.duration - start, 0.5))
+                    text_clip = (
+                        TextClip(caption, **style_kwargs)
+                        .set_start(start)
+                        .set_duration(duration)
+                        .set_position(("center", canvas_height - 420))
+                    )
+                    caption_clips.append(text_clip)
 
                 final_clip = CompositeVideoClip([video_layer, *caption_clips], size=(canvas_width, canvas_height))
                 final_clip = final_clip.set_audio(performance_clip.audio)
