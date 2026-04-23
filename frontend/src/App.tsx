@@ -2,6 +2,9 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   askAria,
   askAriaStream,
+  authorizeYoutube,
+  checkLatestYoutubeData,
+  clearYoutubeToken,
   coachRepertoire,
   draftComment,
   draftMetadata,
@@ -754,6 +757,7 @@ function VaultPage() {
   const [payload, setPayload] = useState<VaultPayload | null>(null);
   const [settings, setSettings] = useState<VaultPayload["settings"] | null>(null);
   const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     loadVault()
@@ -782,6 +786,57 @@ function VaultPage() {
     }
   }
 
+  async function reconnectYoutube() {
+    setBusy(true);
+    setStatus("Opening YouTube authorization...");
+    try {
+      const result = await authorizeYoutube();
+      setPayload(result);
+      setSettings(result.settings);
+      setStatus(result.message || result.connection.message);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "YouTube authorization failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeToken() {
+    setBusy(true);
+    setStatus("Removing saved YouTube token...");
+    try {
+      const result = await clearYoutubeToken();
+      setPayload(result);
+      setSettings(result.settings);
+      setStatus(result.message || result.connection.message);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not clear the YouTube token.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refreshYoutubeSnapshot() {
+    setBusy(true);
+    setStatus("Checking latest YouTube data and saving today's snapshot...");
+    try {
+      const result = await checkLatestYoutubeData();
+      const messages = Object.entries(result.messages)
+        .map(([label, value]) => `${label}: ${value}`)
+        .join("\n");
+      setStatus(messages || (result.success ? "Latest YouTube data saved." : "No YouTube data was refreshed."));
+      setPayload((current) => current ? { ...current, cache: result.cache } : current);
+      loadVault().then((nextPayload) => {
+        setPayload(nextPayload);
+        setSettings(nextPayload.settings);
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Latest YouTube data check failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="page-stack">
       <SectionHeader title="The Vault" copy="Store local defaults, model preferences, and YouTube credentials for the Python engine." />
@@ -791,6 +846,37 @@ function VaultPage() {
         <div className="metric-card"><span>OAuth Client</span><strong>{payload?.connection.oauth_client ? "Yes" : "No"}</strong><small>write access setup</small></div>
         <div className="metric-card"><span>Token</span><strong>{payload?.connection.token ? "Yes" : "No"}</strong><small>saved locally</small></div>
       </div>
+      <Panel title="YouTube Connection">
+        <InfoRow label="Status" value={payload?.connection.message ?? "Loading connection status..."} />
+        <div className="button-row">
+          <button onClick={reconnectYoutube} disabled={busy || !payload?.connection.oauth_client}>Reconnect YouTube</button>
+          <button onClick={refreshYoutubeSnapshot} disabled={busy || !payload?.connection.token}>Check Latest Data</button>
+          <button onClick={removeToken} disabled={busy || !payload?.connection.token}>Clear Token</button>
+        </div>
+      </Panel>
+      <Panel title="Data Freshness">
+        {payload?.cache.length ? (
+          <div className="freshness-list">
+            {payload.cache.map((row) => (
+              <article className="freshness-row" key={row.cache_key}>
+                <div>
+                  <strong>{row.dataset}</strong>
+                  <span>{row.status}</span>
+                </div>
+                <div>
+                  <small>Latest data</small>
+                  <strong>{row.latest_data_date || "None"}</strong>
+                </div>
+                <div>
+                  <small>Today</small>
+                  <strong>{row.today_date || "Not checked"}</strong>
+                </div>
+                <p>{row.message || "No cache note recorded."}</p>
+              </article>
+            ))}
+          </div>
+        ) : <p>No YouTube cache rows have been recorded yet.</p>}
+      </Panel>
       <Panel title="Settings">
         {settings ? (
           <div className="form-grid">

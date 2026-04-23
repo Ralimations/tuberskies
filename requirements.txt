@@ -1,8 +1,6 @@
-streamlit
 fastapi
 uvicorn
 pandas
-plotly
 ollama
 google-api-python-client
 google-auth

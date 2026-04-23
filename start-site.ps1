@@ -120,7 +120,7 @@ if (-not (Test-Path (Join-Path $FrontendDir "node_modules"))) {
     Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
     Push-Location $FrontendDir
     try {
-        npm install
+        npm.cmd install
     }
     finally {
         Pop-Location
@@ -132,7 +132,7 @@ if (-not (Test-Port -Port $FrontendPort)) {
     Start-PowerShellProcess `
         -Title "A.R.I.A. Frontend" `
         -WorkingDirectory $FrontendDir `
-        -Command "`$env:Path = '$NodeDir;' + `$env:Path; npm run dev -- --host 127.0.0.1 --port $FrontendPort"
+        -Command "`$env:Path = '$NodeDir;' + `$env:Path; npm.cmd run dev -- --host 127.0.0.1 --port $FrontendPort"
     Start-Sleep -Seconds 2
 }
 else {

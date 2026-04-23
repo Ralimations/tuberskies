@@ -1,4 +1,4 @@
-import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, VaultPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, VaultPayload, YoutubeRefreshPayload } from "./types";
 
 export async function loadBootstrap(): Promise<BootstrapPayload> {
   const response = await fetch("/api/bootstrap");
@@ -56,6 +56,18 @@ export function saveVault(settings: VaultPayload["settings"]): Promise<VaultPayl
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings)
   });
+}
+
+export function clearYoutubeToken(): Promise<VaultPayload & { message?: string }> {
+  return requestJson("/api/vault/youtube/clear-token", { method: "POST" });
+}
+
+export function authorizeYoutube(): Promise<VaultPayload & { message?: string }> {
+  return requestJson("/api/vault/youtube/authorize", { method: "POST" });
+}
+
+export function checkLatestYoutubeData(): Promise<YoutubeRefreshPayload> {
+  return requestJson("/api/vault/youtube/check-latest", { method: "POST" });
 }
 
 export function loadRepertoire(): Promise<RepertoirePayload> {

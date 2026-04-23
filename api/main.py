@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import textwrap
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,12 +25,20 @@ from aria_app.features.command_center_parts.keyword_tools import build_keyword_o
 from aria_app.features.command_center_parts.upload_metrics import build_upload_takeaways
 from aria_app.pattern_memory import refresh_pattern_memory
 from mock_data import generate_analytics_data
-from storage import PRIORITIES, STAGES, load_calendar, load_vault_settings, save_calendar, save_vault_settings
-from youtube_cache import cached_channel_profile, cached_live_analytics, cached_video_performance
+from storage import PRIORITIES, STAGES, list_api_cache_rows, load_calendar, load_vault_settings, save_calendar, save_vault_settings
+from youtube_cache import (
+    cached_channel_profile,
+    cached_comment_threads,
+    cached_live_analytics,
+    cached_owned_video_metadata,
+    cached_video_performance,
+    save_cached_owned_video_metadata,
+)
 from youtube_client import (
-    get_owned_video_metadata,
+    authorize_youtube_analytics,
+    clear_youtube_token,
+    get_connection_status,
     has_saved_token,
-    list_recent_comment_threads,
     reply_to_comment,
     update_owned_video_metadata,
 )
@@ -65,6 +73,15 @@ SIDEBAR_ITEMS = [
     {"label": "Shorts Architect", "path": "/shorts", "icon": "scissors", "group": "More tools"},
     {"label": "The Vault", "path": "/vault", "icon": "vault", "group": "More tools"},
 ]
+
+CACHE_DATASETS = {
+    "youtube:channel_profile": "Channel Profile",
+    "youtube:live_analytics:90": "Analytics",
+    "youtube:video_performance:365:100": "Upload Performance",
+    "youtube:music_trends:": "Music Trends",
+    "youtube:video_metadata:": "Video Metadata",
+    "youtube:comment_threads:": "Comments",
+}
 
 
 class ChatMessage(BaseModel):
@@ -289,6 +306,60 @@ def _json_safe(value: Any) -> Any:
     if pd.isna(value) if not isinstance(value, list | tuple | dict) else False:
         return None
     return value
+
+
+def _cache_label(cache_key: str) -> str:
+    for prefix, label in CACHE_DATASETS.items():
+        if cache_key.startswith(prefix):
+            return label
+    return cache_key
+
+
+def _payload_kind(row: dict[str, Any] | None) -> str:
+    payload = row.get("payload") if row else None
+    if isinstance(payload, dict):
+        return str(payload.get("kind", "unknown"))
+    return "missing"
+
+
+def _build_cache_freshness_rows() -> list[dict[str, str]]:
+    today = date.today().isoformat()
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in list_api_cache_rows("youtube:"):
+        grouped.setdefault(str(row["cache_key"]), []).append(row)
+
+    freshness_rows: list[dict[str, str]] = []
+    for cache_key, rows in grouped.items():
+        today_row = next((row for row in rows if row["cache_date"] == today), None)
+        latest_data_row = next((row for row in rows if _payload_kind(row) != "refresh_error"), None)
+        active_row = today_row or latest_data_row or rows[0]
+        today_kind = _payload_kind(today_row)
+        latest_kind = _payload_kind(latest_data_row)
+        if today_kind == "refresh_error":
+            status = "Refresh failed today"
+        elif today_row is not None and today_kind != "missing":
+            status = "Fresh today"
+        elif latest_data_row is not None:
+            status = "Using stored data"
+        else:
+            status = "No stored data"
+
+        freshness_rows.append(
+            {
+                "dataset": _cache_label(cache_key),
+                "cache_key": cache_key,
+                "status": status,
+                "today_date": today_row["cache_date"] if today_row else "",
+                "latest_data_date": latest_data_row["cache_date"] if latest_data_row else "",
+                "payload_kind": today_kind if today_row else latest_kind,
+                "updated_at": str(active_row.get("updated_at", "")),
+                "message": str(active_row.get("message", "")),
+            }
+        )
+
+    label_order = {label: index for index, label in enumerate(CACHE_DATASETS.values())}
+    freshness_rows.sort(key=lambda row: (label_order.get(row["dataset"], 99), row["cache_key"]))
+    return freshness_rows
 
 
 def _load_context() -> dict[str, Any]:
@@ -586,13 +657,17 @@ def analytics() -> dict[str, Any]:
 @app.get("/api/vault")
 def vault() -> dict[str, Any]:
     settings = load_vault_settings()
+    status = get_connection_status(settings)
     return {
         "settings": settings,
         "connection": {
             "api_key": bool(settings.get("youtube_api_key", "").strip()),
             "oauth_client": bool(settings.get("youtube_client_id", "").strip() and settings.get("youtube_client_secret", "").strip()),
             "token": has_saved_token(),
+            "connected": status.connected,
+            "message": status.message,
         },
+        "cache": _build_cache_freshness_rows(),
     }
 
 
@@ -608,6 +683,46 @@ def save_vault(request: VaultSettingsRequest) -> dict[str, Any]:
         }
     )
     return vault()
+
+
+@app.post("/api/vault/youtube/clear-token")
+def clear_youtube_authorization() -> dict[str, Any]:
+    clear_youtube_token()
+    payload = vault()
+    payload["message"] = "The saved local YouTube token was removed. Reconnect YouTube before checking fresh data."
+    return payload
+
+
+@app.post("/api/vault/youtube/authorize")
+def authorize_youtube() -> dict[str, Any]:
+    message = authorize_youtube_analytics(load_vault_settings())
+    payload = vault()
+    payload["message"] = message
+    return payload
+
+
+@app.post("/api/vault/youtube/check-latest")
+def check_latest_youtube_data() -> dict[str, Any]:
+    settings = load_vault_settings()
+    live_df, live_message = cached_live_analytics(settings, force_refresh=True)
+    video_df, video_message = cached_video_performance(settings, force_refresh=True)
+    profile, profile_message = (
+        cached_channel_profile(settings, force_refresh=True)
+        if has_saved_token()
+        else (None, "No saved YouTube token is available. Reconnect YouTube first.")
+    )
+    return _json_safe(
+        {
+            "success": live_df is not None or video_df is not None or profile is not None,
+            "messages": {
+                "analytics": live_message,
+                "videos": video_message,
+                "profile": profile_message,
+            },
+            "profile": profile,
+            "cache": _build_cache_freshness_rows(),
+        }
+    )
 
 
 @app.get("/api/repertoire")
@@ -666,7 +781,7 @@ def creator_actions() -> dict[str, Any]:
 
 @app.post("/api/creator-actions/metadata/load")
 def load_metadata(request: MetadataLoadRequest) -> dict[str, Any]:
-    metadata, message = get_owned_video_metadata(load_vault_settings(), request.video_id)
+    metadata, message = cached_owned_video_metadata(load_vault_settings(), request.video_id)
     return _json_safe({"metadata": metadata, "message": message})
 
 
@@ -702,12 +817,25 @@ def publish_metadata(request: MetadataPublishRequest) -> dict[str, Any]:
     )
     if success:
         _log_action("metadata_update", {"video_id": request.video_id, "title": request.title, "tag_count": len(request.tags)})
+        save_cached_owned_video_metadata(
+            request.video_id,
+            {
+                "video_id": request.video_id,
+                "title": request.title,
+                "description": request.description,
+                "tags": request.tags,
+                "category_id": "10",
+                "thumbnail_url": "",
+                "privacy_status": "",
+            },
+            "Metadata cache updated after local publish action.",
+        )
     return {"success": success, "message": message}
 
 
 @app.post("/api/creator-actions/comments/list")
 def list_comments(request: CommentListRequest) -> dict[str, Any]:
-    rows, message = list_recent_comment_threads(load_vault_settings(), video_id=request.video_id, max_results=20)
+    rows, message = cached_comment_threads(load_vault_settings(), video_id=request.video_id, max_results=20)
     return _json_safe({"rows": rows, "message": message})
 
 

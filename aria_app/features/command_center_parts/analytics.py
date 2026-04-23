@@ -3,16 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
-import plotly.express as px
-import streamlit as st
 
-from aria_app.ui import (
-    render_creator_hero,
-    render_editorial_list,
-    render_insight_card,
-    render_panel_header,
-    render_stat_card,
-)
 
 def build_creator_hero_stats(
     analytics_df: pd.DataFrame,
@@ -41,6 +32,9 @@ def build_creator_hero_stats(
 
 
 def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
+    import plotly.express as px
+    import streamlit as st
+
     if df.empty or metric_name not in df.columns:
         st.info("No live analytics are available for this chart yet.")
         return

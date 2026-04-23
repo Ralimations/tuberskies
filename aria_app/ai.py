@@ -4,7 +4,6 @@ import textwrap
 from typing import Iterable
 
 import ollama
-import streamlit as st
 
 
 ARIA_SYSTEM_PROMPT = (
@@ -25,17 +24,20 @@ RESPONSE_STYLE_INSTRUCTIONS = {
 }
 
 
-def stream_ollama_response(prompt: str, model: str) -> Iterable[str]:
+def stream_ollama_response(
+    prompt: str,
+    model: str,
+    response_style: str = "Concise",
+    pattern_snapshot: dict[str, object] | None = None,
+    upload_takeaways: dict[str, object] | None = None,
+) -> Iterable[str]:
     try:
-        response_style = st.session_state.get("coach_response_style", "Concise")
         system_prompt = (
             f"{ARIA_SYSTEM_PROMPT} "
             f"{RESPONSE_STYLE_INSTRUCTIONS.get(response_style, RESPONSE_STYLE_INSTRUCTIONS['Concise'])}"
         )
-        pattern_snapshot = st.session_state.get("pattern_memory", {}).get("latest")
         if pattern_snapshot:
             system_prompt = f"{system_prompt}\n\n{build_pattern_memory_context(pattern_snapshot)}"
-        upload_takeaways = st.session_state.get("upload_takeaways", {})
         if upload_takeaways:
             system_prompt = f"{system_prompt}\n\n{build_upload_history_context(upload_takeaways)}"
         stream = ollama.chat(

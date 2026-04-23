@@ -94,19 +94,55 @@ def initialize_database() -> None:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS api_cache (
-                cache_key TEXT PRIMARY KEY,
+                cache_key TEXT NOT NULL,
                 cache_date TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 message TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (cache_key, cache_date)
             )
             """
         )
         connection.commit()
 
+    _migrate_api_cache_schema_if_needed()
     _migrate_json_calendar_if_needed()
     _migrate_json_pattern_memory_if_needed()
+
+
+def _migrate_api_cache_schema_if_needed() -> None:
+    with _connect_database() as connection:
+        columns = connection.execute("PRAGMA table_info(api_cache)").fetchall()
+        primary_key_columns = [row["name"] for row in sorted(columns, key=lambda item: item["pk"]) if row["pk"]]
+        if primary_key_columns == ["cache_key", "cache_date"]:
+            return
+
+        connection.execute("ALTER TABLE api_cache RENAME TO api_cache_legacy")
+        connection.execute(
+            """
+            CREATE TABLE api_cache (
+                cache_key TEXT NOT NULL,
+                cache_date TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                message TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (cache_key, cache_date)
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO api_cache (
+                cache_key, cache_date, payload_json, message, created_at, updated_at
+            )
+            SELECT cache_key, cache_date, payload_json, message, created_at, updated_at
+            FROM api_cache_legacy
+            """
+        )
+        connection.execute("DROP TABLE api_cache_legacy")
+        connection.commit()
 
 
 def _normalize_calendar_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -337,10 +373,47 @@ def load_api_cache(cache_key: str, cache_date: str | None = None) -> dict[str, A
                 SELECT cache_key, cache_date, payload_json, message, updated_at
                 FROM api_cache
                 WHERE cache_key = ?
+                ORDER BY cache_date DESC, updated_at DESC
+                LIMIT 1
                 """,
                 (cache_key,),
             ).fetchone()
 
+    return _decode_api_cache_row(row)
+
+
+def load_latest_api_cache(
+    cache_key: str,
+    *,
+    before_date: str | None = None,
+    payload_kind: str | None = None,
+) -> dict[str, Any] | None:
+    initialize_database()
+    conditions = ["cache_key = ?"]
+    params: list[Any] = [cache_key]
+    if before_date:
+        conditions.append("cache_date < ?")
+        params.append(before_date)
+    if payload_kind:
+        conditions.append("json_extract(payload_json, '$.kind') = ?")
+        params.append(payload_kind)
+
+    with _connect_database() as connection:
+        row = connection.execute(
+            f"""
+            SELECT cache_key, cache_date, payload_json, message, updated_at
+            FROM api_cache
+            WHERE {" AND ".join(conditions)}
+            ORDER BY cache_date DESC, updated_at DESC
+            LIMIT 1
+            """,
+            params,
+        ).fetchone()
+
+    return _decode_api_cache_row(row)
+
+
+def _decode_api_cache_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
 
@@ -371,6 +444,36 @@ def save_api_cache(cache_key: str, cache_date: str, payload: Any, message: str =
             (cache_key, cache_date, json.dumps(payload, ensure_ascii=False), message),
         )
         connection.commit()
+
+
+def list_api_cache_rows(cache_key_prefix: str | None = None) -> list[dict[str, Any]]:
+    initialize_database()
+    with _connect_database() as connection:
+        if cache_key_prefix:
+            rows = connection.execute(
+                """
+                SELECT cache_key, cache_date, payload_json, message, updated_at
+                FROM api_cache
+                WHERE cache_key LIKE ?
+                ORDER BY cache_key, cache_date DESC, updated_at DESC
+                """,
+                (f"{cache_key_prefix}%",),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT cache_key, cache_date, payload_json, message, updated_at
+                FROM api_cache
+                ORDER BY cache_key, cache_date DESC, updated_at DESC
+                """
+            ).fetchall()
+
+    decoded_rows: list[dict[str, Any]] = []
+    for row in rows:
+        decoded = _decode_api_cache_row(row)
+        if decoded:
+            decoded_rows.append(decoded)
+    return decoded_rows
 
 
 def _load_pattern_memory_from_json() -> dict[str, Any]:

@@ -73,7 +73,10 @@ def has_saved_token() -> bool:
 
 
 def saved_token_has_required_scopes() -> bool:
-    credentials = _load_stored_credentials()
+    try:
+        credentials = _load_stored_credentials()
+    except Exception:
+        return False
     return bool(credentials and _has_required_scopes(credentials))
 
 
@@ -152,7 +155,10 @@ def _require_authorized_credentials(settings: dict[str, str]) -> tuple[Credentia
     if not has_oauth_credentials(settings):
         return None, "OAuth client credentials are still missing, so live channel analytics cannot be requested yet."
 
-    credentials = _load_stored_credentials()
+    try:
+        credentials = _load_stored_credentials()
+    except Exception as error:
+        return None, f"The saved YouTube token could not be refreshed. Live YouTube data is unavailable until OAuth is working again: {error}"
     if credentials is None or not credentials.valid:
         return None, "OAuth is configured, but A.R.I.A. still needs the one-time Google authorization step."
     if not _has_required_scopes(credentials):

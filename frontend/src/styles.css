@@ -169,6 +169,7 @@ button {
   background: var(--blue-soft);
   color: var(--ink);
   font-weight: 700;
+  white-space: pre-wrap;
 }
 
 .status.error {
@@ -722,6 +723,54 @@ textarea {
   gap: 0 18px;
 }
 
+.freshness-list {
+  display: grid;
+  gap: 10px;
+}
+
+.freshness-row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.7fr 0.7fr minmax(0, 1.6fr);
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.freshness-row div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.freshness-row strong {
+  min-width: 0;
+}
+
+.freshness-row span,
+.freshness-row small,
+.freshness-row p {
+  color: var(--muted);
+}
+
+.freshness-row span,
+.freshness-row small {
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.freshness-row p {
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 0.82rem;
+}
+
 .info-row {
   display: grid;
   grid-template-columns: minmax(0, 0.4fr) minmax(0, 1fr);
@@ -815,6 +864,7 @@ pre {
   .board-grid,
   .action-card-grid,
   .guardrail-grid,
+  .freshness-row,
   .edit-row,
   .sparkline-shell {
     grid-template-columns: 1fr;

@@ -71,7 +71,26 @@ export type VaultPayload = {
     api_key: boolean;
     oauth_client: boolean;
     token: boolean;
+    connected: boolean;
+    message: string;
   };
+  cache: {
+    dataset: string;
+    cache_key: string;
+    status: string;
+    today_date: string;
+    latest_data_date: string;
+    payload_kind: string;
+    updated_at: string;
+    message: string;
+  }[];
+};
+
+export type YoutubeRefreshPayload = {
+  success: boolean;
+  messages: Record<string, string>;
+  profile?: Record<string, unknown> | null;
+  cache: VaultPayload["cache"];
 };
 
 export type CreatorActionsPayload = {
