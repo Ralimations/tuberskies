@@ -8,12 +8,10 @@ import {
   clearYoutubeToken,
   coachRepertoire,
   deleteShortsProject,
-  draftComment,
   draftMetadata,
   generateIdeation,
   loadAnalytics,
   loadBootstrap,
-  loadComments,
   loadCreatorActions,
   loadMetadata,
   loadRepertoire,
@@ -21,7 +19,6 @@ import {
   loadShortsProject,
   loadVault,
   previewShortsFromAiPlan,
-  publishComment,
   publishMetadata,
   renderShortsFromAiPlan,
   saveRepertoire,
@@ -30,7 +27,7 @@ import {
   scoreIdeation
 } from "./api";
 import { Icon } from "./icons";
-import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, NavItem, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPlanClip, ShortsPreviewPayload, ShortsProjectPayload, ShortsRenderPayload, VaultPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CreatorActionsPayload, IdeationScorePayload, NavItem, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPlanClip, ShortsPreviewPayload, ShortsProjectPayload, ShortsRenderPayload, VaultPayload } from "./types";
 
 const fallbackData: BootstrapPayload = {
   navigation: [
@@ -139,9 +136,6 @@ function Sidebar({ items, activePath, onNavigate }: { items: NavItem[]; activePa
         <div className="brand-mark">A</div>
         <span>A.R.I.A.</span>
       </div>
-      <button className="new-brief" onClick={() => onNavigate(items[0])}>
-        New Brief
-      </button>
       {Object.entries(groups).map(([group, groupItems]) => (
         <section className="nav-group" key={group}>
           <p>{group}</p>
@@ -362,6 +356,7 @@ function AnalyticsPage({ data }: { data: BootstrapPayload }) {
   const [payload, setPayload] = useState<AnalyticsPayload | null>(null);
   const [metric, setMetric] = useState("views");
   const [status, setStatus] = useState("");
+  const [notice, setNotice] = useState("");
   const analytics = payload ?? {
     source: data.profile.source,
     profile: data.profile,
@@ -384,10 +379,19 @@ function AnalyticsPage({ data }: { data: BootstrapPayload }) {
       .catch((error: Error) => setStatus(error.message));
   }, []);
 
+  function handleActionCard(card: AnalyticsPayload["actionCards"][number]) {
+    if (card.path === "/analytics") {
+      setNotice(`${card.cta}: ${card.body}`);
+      return;
+    }
+    navigateTo(card.path);
+  }
+
   return (
     <section className="page-stack">
       <Hero data={{ ...data, profile: { ...data.profile, title: String(analytics.profile.title ?? data.profile.title), handle: String(analytics.profile.handle ?? data.profile.handle), source: analytics.source } }} />
       {status ? <div className="status error">{status}</div> : null}
+      {notice ? <div className="status">{notice}</div> : null}
       <div className="grid stats-grid">
         {analytics.stats.map((stat) => (
           <div className="metric-card" key={stat.label}>
@@ -406,6 +410,7 @@ function AnalyticsPage({ data }: { data: BootstrapPayload }) {
           ))}
         </div>
         <Sparkline rows={analytics.rows} metric={metric} />
+        <MetricDetailTable rows={analytics.rows} metric={metric} />
       </Panel>
       <div className="grid two-col">
         <Panel title="Today Brief">
@@ -419,8 +424,8 @@ function AnalyticsPage({ data }: { data: BootstrapPayload }) {
         </Panel>
       </div>
       <div className="grid two-col">
-        <Panel title="Alerts">
-          <DataTable rows={analytics.alerts} columns={["date", "views", "ctr", "retention"]} />
+        <Panel title="Trends">
+          <DataTable rows={analytics.alerts} columns={["date", "trend", "views", "views_change", "retention", "ctr"]} />
         </Panel>
         <Panel title="Publish Timing">
           <DataTable rows={analytics.publishTiming} columns={["weekday", "avg_views", "avg_retention", "publish_score"]} />
@@ -433,7 +438,7 @@ function AnalyticsPage({ data }: { data: BootstrapPayload }) {
               <span>{card.category}</span>
               <h3>{card.title}</h3>
               <p>{card.body}</p>
-              <button onClick={() => navigateTo(card.path)}>{card.cta}</button>
+              <button onClick={() => handleActionCard(card)}>{card.cta}</button>
             </article>
           )) : <p>No action cards loaded yet.</p>}
         </div>
@@ -482,8 +487,6 @@ function IdeationPage() {
   const [topic, setTopic] = useState("");
   const [workingTitle, setWorkingTitle] = useState("");
   const [action, setAction] = useState("title_pack");
-  const [fanRequest, setFanRequest] = useState("");
-  const [commentDump, setCommentDump] = useState("");
   const [output, setOutput] = useState("");
   const [lastAction, setLastAction] = useState("No generation yet.");
   const [score, setScore] = useState<IdeationScorePayload>({ keywords: [], scorecard: [] });
@@ -510,8 +513,8 @@ function IdeationPage() {
         topic,
         working_title: workingTitle,
         action: nextAction,
-        fan_request: fanRequest,
-        comment_dump: commentDump
+        fan_request: "",
+        comment_dump: ""
       });
       setOutput(result.content);
       setLastAction(ideationActions.find(([key]) => key === nextAction)?.[1] ?? "Comment Request Extraction");
@@ -566,22 +569,6 @@ function IdeationPage() {
         </Panel>
       </div>
       <div className="grid two-col">
-        <Panel title="Request Signals">
-          <div className="form-grid">
-            <label className="field">
-              <span>Ko-fi / Fanskies request dropbox</span>
-              <textarea value={fanRequest} onChange={(event) => setFanRequest(event.target.value)} rows={4} placeholder="Paste song requests here..." />
-            </label>
-            <label className="field">
-              <span>Comments / request extraction inbox</span>
-              <textarea value={commentDump} onChange={(event) => setCommentDump(event.target.value)} rows={6} placeholder="Paste YouTube comments here..." />
-            </label>
-            <div className="button-row">
-              <button onClick={() => runGeneration("fan_request_spin")}>Fan Request Spin</button>
-              <button onClick={() => runGeneration("extract_requests")}>Extract Requests</button>
-            </div>
-          </div>
-        </Panel>
         <Panel title="Output Desk">
           <pre>{output || "Generated ideas will appear here."}</pre>
           <div className="info-row">
@@ -717,36 +704,37 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
 
 function CreatorActionsPage() {
   const [payload, setPayload] = useState<CreatorActionsPayload | null>(null);
-  const [mode, setMode] = useState<"metadata" | "comments">("metadata");
   const [selectedVideoId, setSelectedVideoId] = useState("");
   const [selectedVideoLabel, setSelectedVideoLabel] = useState("");
+  const [selectedReason, setSelectedReason] = useState("");
   const [status, setStatus] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [metadataDraft, setMetadataDraft] = useState("");
-  const [comments, setComments] = useState<CommentRow[]>([]);
-  const [selectedCommentIndex, setSelectedCommentIndex] = useState(0);
-  const [replyDraft, setReplyDraft] = useState("");
   const [reviewed, setReviewed] = useState(false);
 
   useEffect(() => {
     loadCreatorActions()
       .then((result) => {
         setPayload(result);
-        const first = result.videos[0];
+        const first = result.metadataActions[0] ?? result.videos[0];
         if (first) {
           setSelectedVideoId(first.video_id);
           setSelectedVideoLabel(first.label);
+          setSelectedReason("reason" in first ? String(first.reason ?? "") : "");
         }
       })
       .catch((error: Error) => setStatus(error.message));
   }, []);
 
   function onVideoChange(videoId: string) {
-    const selected = payload?.videos.find((video) => video.video_id === videoId);
+    const selectedAction = payload?.metadataActions.find((video) => video.video_id === videoId);
+    const selected = selectedAction ?? payload?.videos.find((video) => video.video_id === videoId);
     setSelectedVideoId(videoId);
     setSelectedVideoLabel(selected?.label ?? "");
+    setSelectedReason(selectedAction?.reason ?? "");
+    setReviewed(false);
   }
 
   async function handleLoadMetadata() {
@@ -763,7 +751,7 @@ function CreatorActionsPage() {
 
   async function handleDraftMetadata() {
     setMetadataDraft("A.R.I.A. is drafting metadata...");
-    const result = await draftMetadata(selectedVideoLabel);
+    const result = await draftMetadata(selectedVideoLabel, selectedReason, title);
     setMetadataDraft(result.content);
   }
 
@@ -779,83 +767,56 @@ function CreatorActionsPage() {
     setStatus(result.message);
   }
 
-  async function handleLoadComments() {
-    setStatus("Loading comments...");
-    const result = await loadComments(selectedVideoId);
-    setComments(result.rows);
-    setSelectedCommentIndex(0);
-    setStatus(result.message);
-  }
-
-  async function handleDraftComment() {
-    const selected = comments[selectedCommentIndex];
-    if (!selected) return;
-    setReplyDraft("A.R.I.A. is drafting a reply...");
-    const result = await draftComment(String(selected.author ?? "Unknown"), String(selected.text ?? ""));
-    setReplyDraft(result.content);
-  }
-
-  async function handlePublishComment() {
-    const selected = comments[selectedCommentIndex];
-    if (!selected?.comment_id) return;
-    setStatus("Posting reply...");
-    const result = await publishComment({ comment_id: selected.comment_id, reply_text: replyDraft, reviewed });
-    setStatus(result.message);
-  }
-
-  const selectedComment = comments[selectedCommentIndex];
+  const selectedAction = payload?.metadataActions.find((video) => video.video_id === selectedVideoId);
 
   return (
     <section className="page-stack">
-      <SectionHeader title="Creator Actions" copy="Draft, review, and publish YouTube metadata or comment replies with channel-safe guardrails." />
+      <SectionHeader title="Creator Actions" copy="A.R.I.A. prioritizes low-performing uploads and drafts metadata improvements for review." />
       {status ? <div className="status">{status}</div> : null}
       <Panel title="Safety Guardrails">
         <div className="guardrail-grid">
           {(payload?.guardrails ?? []).map(([label, value]) => <InfoRow key={label} label={label} value={value} />)}
         </div>
       </Panel>
-      <div className="segmented">
-        <button className={mode === "metadata" ? "active" : ""} onClick={() => setMode("metadata")}>Metadata</button>
-        <button className={mode === "comments" ? "active" : ""} onClick={() => setMode("comments")}>Comments</button>
-      </div>
-      <Panel title={mode === "metadata" ? "Metadata Actions" : "Comment Reply Inbox"}>
+      <Panel title="Metadata Actions">
+        <div className="action-priority-list">
+          {(payload?.metadataActions ?? []).length ? payload?.metadataActions.map((action) => (
+            <button
+              className={selectedVideoId === action.video_id ? "active" : ""}
+              key={action.video_id}
+              onClick={() => onVideoChange(action.video_id)}
+            >
+              <strong>{action.title}</strong>
+              <span>{action.reason} | {action.views.toLocaleString()} views | {Math.round(action.retention)}% retention</span>
+            </button>
+          )) : <p>No low-performing metadata actions were loaded yet.</p>}
+        </div>
         <label className="field">
-          <span>Video</span>
+          <span>All Videos</span>
           <select value={selectedVideoId} onChange={(event) => onVideoChange(event.target.value)}>
             {(payload?.videos ?? []).map((video) => <option value={video.video_id} key={video.video_id}>{video.label}</option>)}
           </select>
         </label>
-        {mode === "metadata" ? (
-          <div className="form-grid">
-            <div className="button-row">
-              <button onClick={handleLoadMetadata}>Load Current Metadata</button>
-              <button onClick={handleDraftMetadata}>Draft Tags + Description</button>
-            </div>
-            <label className="field"><span>Title</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} /></label>
-            <label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={8} /></label>
-            <label className="field"><span>Tags</span><textarea value={tags} onChange={(event) => setTags(event.target.value)} rows={4} /></label>
-            <label className="check-row"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} /> I reviewed this metadata and want to publish it.</label>
-            <button className="primary" disabled={!reviewed || !selectedVideoId} onClick={handlePublishMetadata}>Publish Metadata Update</button>
-            <pre>{metadataDraft || "A.R.I.A. metadata draft will appear here."}</pre>
+        {selectedAction ? (
+          <div className="creator-action-summary">
+            <InfoRow label="Priority" value={selectedAction.reason} />
+            <InfoRow label="Views" value={selectedAction.views.toLocaleString()} />
+            <InfoRow label="Retention" value={`${Math.round(selectedAction.retention)}%`} />
+            <InfoRow label="Score" value={String(Math.round(selectedAction.engagement_score))} />
           </div>
-        ) : (
-          <div className="form-grid">
-            <div className="button-row">
-              <button onClick={handleLoadComments}>Load Recent Comments</button>
-              <button onClick={handleDraftComment} disabled={!selectedComment}>Draft Safe Reply</button>
-            </div>
-            <label className="field">
-              <span>Comment</span>
-              <select value={selectedCommentIndex} onChange={(event) => setSelectedCommentIndex(Number(event.target.value))}>
-                {comments.map((comment, index) => <option value={index} key={String(comment.comment_id ?? index)}>{index + 1}. {comment.author ?? "Unknown"} | {comment.already_replied ? "replied" : "open"} | {String(comment.text ?? "").slice(0, 80)}</option>)}
-              </select>
-            </label>
-            <textarea value={String(selectedComment?.text ?? "")} readOnly rows={5} />
-            <label className="field"><span>Reviewed Reply</span><textarea value={replyDraft} onChange={(event) => setReplyDraft(event.target.value)} rows={4} /></label>
-            <label className="check-row"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} /> I reviewed this reply and want to post it.</label>
-            <button className="primary" disabled={!reviewed || !selectedComment?.can_reply || !!selectedComment?.already_replied} onClick={handlePublishComment}>Post One Reply</button>
+        ) : null}
+        <div className="form-grid">
+          <div className="button-row">
+            <button onClick={handleLoadMetadata}>Load Current Metadata</button>
+            <button onClick={handleDraftMetadata}>Draft Metadata Fix</button>
           </div>
-        )}
+          <label className="field"><span>Title</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} /></label>
+          <label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={8} /></label>
+          <label className="field"><span>Tags</span><textarea value={tags} onChange={(event) => setTags(event.target.value)} rows={4} /></label>
+          <label className="check-row"><input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} /> I reviewed this metadata and want to publish it.</label>
+          <button className="primary" disabled={!reviewed || !selectedVideoId} onClick={handlePublishMetadata}>Publish Metadata Update</button>
+          <pre>{metadataDraft || "A.R.I.A. metadata draft will appear here."}</pre>
+        </div>
       </Panel>
     </section>
   );
@@ -1483,7 +1444,11 @@ function RecordSummary({ record }: { record: Record<string, unknown> }) {
 }
 
 function Sparkline({ rows, metric }: { rows: Record<string, unknown>[]; metric: string }) {
-  const values = rows.map((row) => Number(row[metric] ?? 0)).filter((value) => Number.isFinite(value));
+  const values = rows
+    .map((row) => row[metric])
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
   if (values.length < 2) return <p>No chart data loaded for {metric.replaceAll("_", " ")}.</p>;
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -1511,10 +1476,21 @@ function Sparkline({ rows, metric }: { rows: Record<string, unknown>[]; metric: 
   );
 }
 
+function MetricDetailTable({ rows, metric }: { rows: Record<string, unknown>[]; metric: string }) {
+  const recentRows = rows
+    .slice(-12)
+    .filter((row) => row[metric] !== null && row[metric] !== undefined && row[metric] !== "")
+    .map((row) => ({
+      date: String(row.date ?? ""),
+      [metric]: formatMetric(Number(row[metric]), metric)
+    }));
+  return <DataTable rows={recentRows} columns={["date", metric]} />;
+}
+
 function formatMetric(value: number, metric: string) {
   if (metric === "views") return Math.round(value).toLocaleString();
-  if (metric === "watch_time_hours") return `${value.toFixed(1)}h`;
-  return `${value.toFixed(2)}%`;
+  if (metric === "watch_time_hours") return `${Math.round(value).toLocaleString()}h`;
+  return `${Math.round(value)}%`;
 }
 
 function DataTable({ rows, columns }: { rows: Record<string, unknown>[]; columns: string[] }) {
@@ -1533,7 +1509,7 @@ function DataTable({ rows, columns }: { rows: Record<string, unknown>[]; columns
           {rows.map((row, index) => (
             <tr key={index}>
               {columns.map((column) => (
-                <td key={column}>{String(row[column] ?? "")}</td>
+                <td key={column}>{formatCellValue(row[column])}</td>
               ))}
             </tr>
           ))}
@@ -1541,4 +1517,10 @@ function DataTable({ rows, columns }: { rows: Record<string, unknown>[]; columns
       </table>
     </div>
   );
+}
+
+function formatCellValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "Unavailable";
+  if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(1);
+  return String(value);
 }

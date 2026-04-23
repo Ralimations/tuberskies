@@ -5,6 +5,23 @@ from datetime import date
 import pandas as pd
 
 
+def _next_milestone(value: int, base: int = 1_000) -> int:
+    if value < base:
+        return base
+    digits = len(str(max(value, 1)))
+    for step in (1, 2, 5, 10):
+        milestone = step * (10 ** (digits - 1))
+        if milestone > value:
+            return milestone
+    return 10 ** digits
+
+
+def _milestone_meta(value: int, unit: str, base: int = 1_000) -> str:
+    milestone = _next_milestone(value, base=base)
+    remaining = max(milestone - value, 0)
+    return f"{remaining:,} {unit} to {milestone:,}"
+
+
 def build_creator_hero_stats(
     analytics_df: pd.DataFrame,
     video_df: pd.DataFrame | None,
@@ -23,11 +40,13 @@ def build_creator_hero_stats(
     )
     active_projects = len(calendar_df) if calendar_df is not None else 0
     upload_count = len(video_df) if video_df is not None and not video_df.empty else 0
+    subscriber_value = int(live_profile.get("subscriber_count", "0")) if live_profile else int(last_30["subscribers_gained"].fillna(0).sum()) if not last_30.empty else 0
+    next_pipeline = ((active_projects // 5) + 1) * 5
     return [
-        ("Views", f"{views:,}", "last 30 days"),
-        ("Subscribers", subscribers, "channel total or recent gain"),
-        ("Watch Time", f"{watch_time:,}h", "last 30 days"),
-        ("Pipeline", str(active_projects), f"{upload_count} uploads tracked"),
+        ("Views", f"{views:,}", _milestone_meta(views, "views")),
+        ("Subscribers", subscribers, _milestone_meta(subscriber_value, "subs", base=100)),
+        ("Watch Time", f"{watch_time:,}h", _milestone_meta(watch_time, "hours", base=100)),
+        ("Pipeline", str(active_projects), f"{max(next_pipeline - active_projects, 0)} more to {next_pipeline} active ideas"),
     ]
 
 
@@ -75,12 +94,37 @@ def get_alert_rows(df: pd.DataFrame) -> pd.DataFrame:
     return df[ctr_alert | retention_alert].sort_values("date", ascending=False)
 
 
+def get_trend_rows(df: pd.DataFrame) -> pd.DataFrame:
+    columns = ["date", "trend", "views", "views_change", "retention", "ctr"]
+    if df.empty or "views" not in df.columns:
+        return pd.DataFrame(columns=columns)
+
+    trends = df.copy().sort_values("date")
+    trends["views"] = pd.to_numeric(trends["views"], errors="coerce").fillna(0)
+    trends["views_change"] = trends["views"].diff().fillna(0)
+    baseline = trends["views"].rolling(7, min_periods=2).mean().shift(1)
+    trends["trend_strength"] = (trends["views"] - baseline).fillna(trends["views_change"])
+    trends["trend"] = trends["trend_strength"].apply(lambda value: "Spike" if value > 0 else "Dip")
+    top = trends.reindex(trends["trend_strength"].abs().sort_values(ascending=False).index).head(8).copy()
+
+    for column in ["views", "views_change", "retention", "ctr"]:
+        if column in top.columns:
+            top[column] = pd.to_numeric(top[column], errors="coerce")
+    top["views"] = top["views"].round(0).astype("Int64")
+    top["views_change"] = top["views_change"].round(0).astype("Int64")
+    if "retention" in top.columns:
+        top["retention"] = top["retention"].round(0).astype("Int64")
+    if "ctr" in top.columns:
+        top["ctr"] = top["ctr"].round(0).astype("Int64")
+    return top[columns].reset_index(drop=True)
+
+
 def build_channel_audit_rows(df: pd.DataFrame, calendar_df: pd.DataFrame, vault_settings: dict[str, str]) -> list[tuple[str, str]]:
     if df.empty:
         return [("Live Analytics", "Not loaded yet")]
 
     last_30 = df.tail(30)
-    retention = last_30["retention"].mean()
+    retention = last_30["retention"].dropna().mean()
     views = last_30["views"].sum()
     due_soon = calendar_df["target_upload_date"].notna().sum()
     description_ready = "Yes" if vault_settings.get("default_description", "").strip() else "No"
@@ -89,7 +133,7 @@ def build_channel_audit_rows(df: pd.DataFrame, calendar_df: pd.DataFrame, vault_
     idea_count = backlog_balance.get("Song Idea", 0)
 
     return [
-        ("Retention Health", "Strong" if retention >= 45 else "Needs attention"),
+        ("Retention Health", "Strong" if pd.notna(retention) and retention >= 45 else "Needs attention"),
         ("30 Day Demand", f"{int(views):,} views"),
         ("Description Template", description_ready),
         ("Ideas in Queue", str(idea_count)),
@@ -112,7 +156,9 @@ def build_publish_timing_table(df: pd.DataFrame) -> pd.DataFrame:
     weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     summary["weekday"] = pd.Categorical(summary["weekday"], categories=weekday_order, ordered=True)
     summary = summary.sort_values("weekday")
-    summary["publish_score"] = (summary["avg_views"] * 0.5 + summary["avg_retention"] * 8 + summary["avg_watch_time"] * 4).round(1)
+    summary["avg_views"] = summary["avg_views"].round(0).astype("Int64")
+    summary["avg_retention"] = summary["avg_retention"].round(0).astype("Int64")
+    summary["publish_score"] = (summary["avg_views"] * 0.5 + summary["avg_retention"] * 8 + summary["avg_watch_time"] * 4).round(0).astype("Int64")
     return summary[["weekday", "avg_views", "avg_retention", "publish_score"]]
 
 

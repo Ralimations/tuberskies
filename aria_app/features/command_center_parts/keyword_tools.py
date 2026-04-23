@@ -26,6 +26,9 @@ def build_keyword_opportunity_df(topic: str, working_title: str, calendar_df: pd
     if not source_text:
         return pd.DataFrame(columns=["keyword", "demand", "competition", "channel_fit", "score"])
     candidates = extract_keyword_candidates(source_text)
+    if not candidates:
+        return pd.DataFrame(columns=["keyword", "demand", "competition", "channel_fit", "score"])
+
     channel_context = " ".join(calendar_df["content_pillar"].fillna("").astype(str).tolist()).lower()
     notes_context = " ".join(calendar_df["notes"].fillna("").astype(str).tolist()).lower()
     rows: list[dict[str, object]] = []
@@ -44,6 +47,9 @@ def build_keyword_opportunity_df(topic: str, working_title: str, calendar_df: pd
         fit = min(10, fit)
         score = round(demand * 0.35 + (11 - competition) * 0.25 + fit * 0.4, 1)
         rows.append({"keyword": candidate, "demand": demand, "competition": competition, "channel_fit": fit, "score": score})
+    if not rows:
+        return pd.DataFrame(columns=["keyword", "demand", "competition", "channel_fit", "score"])
+
     frame = pd.DataFrame(rows).drop_duplicates(subset=["keyword"]).sort_values(["score", "channel_fit"], ascending=False)
     return frame.head(10).reset_index(drop=True)
 

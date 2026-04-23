@@ -102,6 +102,16 @@ export type YoutubeRefreshPayload = {
 
 export type CreatorActionsPayload = {
   videos: { label: string; video_id: string; title: string }[];
+  metadataActions: {
+    video_id: string;
+    title: string;
+    label: string;
+    views: number;
+    retention: number;
+    watch_time_hours: number;
+    engagement_score: number;
+    reason: string;
+  }[];
   message: string;
   guardrails: [string, string][];
 };

@@ -5,6 +5,10 @@ __pycache__/
 .env.*
 *.env
 data/youtube_token.json
+data/shorts_workdir/
+shorts_output/
+main_video_*
+broll_video_*
 .env
 data/*.db
 data/*.db-journal

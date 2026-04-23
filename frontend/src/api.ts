@@ -102,11 +102,11 @@ export function loadMetadata(videoId: string): Promise<{ metadata: Record<string
   });
 }
 
-export function draftMetadata(videoLabel: string): Promise<{ content: string }> {
+export function draftMetadata(videoLabel: string, reason = "", currentTitle = ""): Promise<{ content: string }> {
   return requestJson("/api/creator-actions/metadata/draft", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ video_label: videoLabel })
+    body: JSON.stringify({ video_label: videoLabel, reason, current_title: currentTitle })
   });
 }
 

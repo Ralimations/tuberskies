@@ -21,6 +21,7 @@ from aria_app.features.command_center_parts.analytics import (
     build_publish_timing_table,
     build_today_desk_payload,
     get_alert_rows,
+    get_trend_rows,
 )
 from aria_app.features.command_center_parts.keyword_tools import build_keyword_opportunity_df, build_title_scorecard
 from aria_app.features.command_center_parts.upload_metrics import build_upload_takeaways
@@ -144,6 +145,8 @@ class CoachRequest(BaseModel):
 
 class MetadataDraftRequest(BaseModel):
     video_label: str
+    reason: str = ""
+    current_title: str = ""
 
 
 class MetadataLoadRequest(BaseModel):
@@ -472,6 +475,52 @@ def _build_cache_freshness_rows() -> list[dict[str, str]]:
     label_order = {label: index for index, label in enumerate(CACHE_DATASETS.values())}
     freshness_rows.sort(key=lambda row: (label_order.get(row["dataset"], 99), row["cache_key"]))
     return freshness_rows
+
+
+def _metadata_action_rows(video_df: pd.DataFrame | None) -> list[dict[str, Any]]:
+    if video_df is None or video_df.empty:
+        return []
+
+    frame = video_df.copy()
+    for column in ["views", "retention", "engagement_score", "watch_time_hours"]:
+        if column not in frame.columns:
+            frame[column] = 0
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+
+    median_views = float(frame["views"].median()) if len(frame) > 1 else 1_000
+    median_retention = float(frame["retention"].median()) if len(frame) > 1 else 45
+    frame["priority_score"] = (
+        frame["engagement_score"].rank(method="dense", ascending=True)
+        + frame["views"].rank(method="dense", ascending=True)
+        + frame["retention"].rank(method="dense", ascending=True)
+    )
+    frame["needs_metadata"] = (frame["views"] < median_views) | (frame["retention"] < median_retention)
+    selected = frame[frame["needs_metadata"]].sort_values(["priority_score", "views"], ascending=True).head(8)
+    if selected.empty:
+        selected = frame.sort_values(["engagement_score", "views"], ascending=True).head(5)
+
+    rows: list[dict[str, Any]] = []
+    for _, row in selected.iterrows():
+        reasons: list[str] = []
+        if float(row.get("views", 0)) < median_views:
+            reasons.append("lower views")
+        if float(row.get("retention", 0)) < median_retention:
+            reasons.append("weaker retention")
+        if not reasons:
+            reasons.append("lowest optimization score")
+        rows.append(
+            {
+                "video_id": str(row.get("video_id", "")),
+                "title": str(row.get("title", "Untitled Video")),
+                "label": f"{str(row.get('title', 'Untitled Video'))[:90]} | {int(row.get('views', 0)):,} views",
+                "views": int(row.get("views", 0)),
+                "retention": round(float(row.get("retention", 0)), 1),
+                "watch_time_hours": round(float(row.get("watch_time_hours", 0)), 1),
+                "engagement_score": round(float(row.get("engagement_score", 0)), 1),
+                "reason": ", ".join(reasons),
+            }
+        )
+    return rows
 
 
 def _load_context() -> dict[str, Any]:
@@ -861,11 +910,11 @@ def analytics() -> dict[str, Any]:
     calendar_df = payload["calendar_df"]
     video_df = payload["video_df"]
     analytics_rows = analytics_df.tail(45).copy()
-    alert_rows = get_alert_rows(analytics_df).head(8).copy()
+    trend_rows = get_trend_rows(analytics_df).copy()
     timing_df = build_publish_timing_table(analytics_df)
     audit_rows = build_channel_audit_rows(analytics_df, calendar_df, payload["settings"])
 
-    for frame in (analytics_rows, alert_rows):
+    for frame in (analytics_rows, trend_rows):
         if "date" in frame.columns:
             frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.strftime("%Y-%m-%d")
 
@@ -879,7 +928,7 @@ def analytics() -> dict[str, Any]:
             ],
             "today": payload["today_payload"],
             "rows": analytics_rows,
-            "alerts": alert_rows,
+            "alerts": trend_rows,
             "publishTiming": timing_df,
             "auditRows": [{"label": label, "value": value} for label, value in audit_rows],
             "actionCards": _build_react_action_cards(payload),
@@ -1004,14 +1053,15 @@ def coach_repertoire(request: CoachRequest) -> dict[str, str]:
 def creator_actions() -> dict[str, Any]:
     settings = load_vault_settings()
     video_df, video_message = cached_video_performance(settings)
+    metadata_actions = _metadata_action_rows(video_df)
     return _json_safe(
         {
             "videos": _video_options(video_df),
+            "metadataActions": metadata_actions,
             "message": video_message,
             "guardrails": [
                 ("No autopilot", "A.R.I.A. drafts only; you approve each publish."),
-                ("No bulk replies", "Replies are sent one comment at a time."),
-                ("No duplicate spam", "Already-replied threads are flagged before posting."),
+                ("Lowest first", "Metadata actions prioritize weaker uploads before healthy ones."),
                 ("Official API", "Uses YouTube OAuth, not browser automation."),
             ],
         }
@@ -1036,6 +1086,8 @@ def draft_metadata(request: MetadataDraftRequest) -> dict[str, str]:
         3. One caution if the current title should not be changed
 
         Current video: {request.video_label}
+        Why this was prioritized: {request.reason or "This upload was selected for metadata optimization."}
+        Current title if known: {request.current_title or request.video_label}
         Current local pattern memory: {payload["pattern_memory"].get("latest", {})}
         """
     ).strip()

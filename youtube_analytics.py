@@ -95,8 +95,8 @@ def load_live_analytics(settings: dict[str, str], days: int = 90) -> tuple[pd.Da
         full_range = pd.DataFrame({"date": pd.date_range(start=start_date, end=end_date, freq="D")})
         frame = full_range.merge(frame, on="date", how="left").sort_values("date")
         frame["views"] = frame["views"].fillna(0)
-        frame["retention"] = frame["retention"].ffill().fillna(0)
-        frame["watch_time_hours"] = frame["watch_time_hours"].fillna(0)
+        frame["retention"] = frame["retention"].ffill()
+        frame["watch_time_hours"] = frame["watch_time_hours"].where(frame["estimated_minutes_watched"].notna(), pd.NA)
         frame["subscribers_gained"] = frame["subscribers_gained"].fillna(0)
 
         channel_title = channel_items[0].get("snippet", {}).get("title", "your YouTube channel")
