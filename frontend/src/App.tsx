@@ -7,6 +7,7 @@ import {
   checkLatestYoutubeData,
   clearYoutubeToken,
   coachRepertoire,
+  deleteShortsProject,
   draftComment,
   draftMetadata,
   generateIdeation,
@@ -16,17 +17,20 @@ import {
   loadCreatorActions,
   loadMetadata,
   loadRepertoire,
+  listShortsProjects,
+  loadShortsProject,
   loadVault,
   previewShortsFromAiPlan,
   publishComment,
   publishMetadata,
   renderShortsFromAiPlan,
   saveRepertoire,
+  saveShortsProject,
   saveVault,
   scoreIdeation
 } from "./api";
 import { Icon } from "./icons";
-import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, NavItem, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPlanClip, ShortsPreviewPayload, ShortsRenderPayload, VaultPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, NavItem, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPlanClip, ShortsPreviewPayload, ShortsProjectPayload, ShortsRenderPayload, VaultPayload } from "./types";
 
 const fallbackData: BootstrapPayload = {
   navigation: [
@@ -1039,6 +1043,10 @@ function ShortsArchitectPage() {
   const [renderResult, setRenderResult] = useState<ShortsRenderPayload | null>(null);
   const [previewResult, setPreviewResult] = useState<ShortsPreviewPayload | null>(null);
   const [editableShorts, setEditableShorts] = useState<ShortsPlanClip[]>([]);
+  const [projectId, setProjectId] = useState("");
+  const [projectTitle, setProjectTitle] = useState("Untitled Shorts Project");
+  const [savedProjects, setSavedProjects] = useState<ShortsProjectPayload[]>([]);
+  const [projectBusy, setProjectBusy] = useState(false);
   const aiShorts = editableShorts;
   const activeVisionModel = visionModel.trim();
   const hasInvalidCuts = aiShorts.some((clip) => Number(clip.end ?? 0) <= Number(clip.start ?? 0));
@@ -1060,6 +1068,12 @@ function ShortsArchitectPage() {
       });
   }, []);
 
+  useEffect(() => {
+    listShortsProjects()
+      .then((payload) => setSavedProjects(payload.projects))
+      .catch(() => setSavedProjects([]));
+  }, []);
+
   async function runAiDirector() {
     if (!mainVideo || analyzing) return;
     setAnalyzing(true);
@@ -1078,6 +1092,8 @@ function ShortsArchitectPage() {
       setEditableShorts(nextShorts);
       setRenderResult(null);
       setPreviewResult(null);
+      setProjectId("");
+      setProjectTitle(nextResult.aiPlan?.video_title || mainVideo.name.replace(/\.[^.]+$/, "") || "Untitled Shorts Project");
       setStatus(`AI plan ready: ${nextResult.aiPlan?.shorts?.length ?? 0} cut(s) selected.`);
       if (nextShorts.length) {
         refreshCutPreviews(nextResult.main_video_path, nextShorts);
@@ -1108,6 +1124,83 @@ function ShortsArchitectPage() {
     setRenderResult(null);
     setPreviewResult(null);
     setStatus("Restored the original AI-selected Shorts plan.");
+  }
+
+  async function saveCurrentProject() {
+    if (!result || projectBusy) return;
+    setProjectBusy(true);
+    setStatus("Saving Shorts project locally...");
+    try {
+      const saved = await saveShortsProject({
+        id: projectId,
+        title: projectTitle,
+        payload: {
+          result,
+          editableShorts,
+          renderResult,
+          previewResult: null,
+          layout,
+          captionTone,
+          objective,
+          whisperModel,
+          visionModel
+        }
+      });
+      setProjectId(saved.project.id);
+      setProjectTitle(saved.project.title);
+      setSavedProjects(saved.projects);
+      setStatus(saved.message);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not save Shorts project.");
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  async function openProject(nextProjectId: string) {
+    if (!nextProjectId || projectBusy) return;
+    setProjectBusy(true);
+    setStatus("Opening saved Shorts project...");
+    try {
+      const loaded = await loadShortsProject(nextProjectId);
+      if (!loaded.project) {
+        setStatus(loaded.message);
+        return;
+      }
+      const payload = loaded.project.payload;
+      setProjectId(loaded.project.id);
+      setProjectTitle(loaded.project.title);
+      setResult(payload.result ?? null);
+      setEditableShorts(payload.editableShorts ?? payload.result?.aiPlan?.shorts ?? []);
+      setRenderResult(payload.renderResult ?? null);
+      setPreviewResult(payload.previewResult ?? null);
+      setLayout(payload.layout ?? "Solo Mode");
+      setCaptionTone(payload.captionTone ?? "#ffd166");
+      setObjective(payload.objective ?? "Retention hook");
+      setWhisperModel(payload.whisperModel ?? "small");
+      setVisionModel(payload.visionModel ?? "");
+      setStatus(loaded.message);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not open Shorts project.");
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  async function removeCurrentProject() {
+    if (!projectId || projectBusy) return;
+    setProjectBusy(true);
+    setStatus("Deleting saved Shorts project...");
+    try {
+      const deleted = await deleteShortsProject(projectId);
+      setSavedProjects(deleted.projects);
+      setProjectId("");
+      setStatus(deleted.message);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not delete Shorts project.");
+    } finally {
+      setProjectBusy(false);
+    }
   }
 
   async function refreshCutPreviews(mainVideoPath = result?.main_video_path ?? "", shorts = editableShorts) {
@@ -1155,6 +1248,23 @@ function ShortsArchitectPage() {
       <div className="shorts-shell">
         <Panel title="AI Director">
           <div className="form-grid">
+            <label className="field">
+              <span>Saved Project</span>
+              <select value={projectId} onChange={(event) => openProject(event.target.value)} disabled={projectBusy || !savedProjects.length}>
+                <option value="">{savedProjects.length ? "Open saved Shorts project" : "No saved Shorts projects"}</option>
+                {savedProjects.map((project) => (
+                  <option value={project.id} key={project.id}>{project.title} | {project.updated_at}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Project Title</span>
+              <input value={projectTitle} onChange={(event) => setProjectTitle(event.target.value)} />
+            </label>
+            <div className="button-row">
+              <button disabled={!result || projectBusy} onClick={saveCurrentProject}>{projectBusy ? "Working..." : "Save Project"}</button>
+              <button disabled={!projectId || projectBusy} onClick={removeCurrentProject}>Delete Saved Project</button>
+            </div>
             <label className="field">
               <span>Main Performance Video</span>
               <input type="file" accept="video/*" onChange={(event) => setMainVideo(event.target.files?.[0] ?? null)} />

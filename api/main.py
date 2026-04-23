@@ -27,7 +27,19 @@ from aria_app.features.command_center_parts.upload_metrics import build_upload_t
 from aria_app.pattern_memory import refresh_pattern_memory
 from mock_data import generate_analytics_data
 from shorts_architect import SHORTS_OUTPUT_DIR, SHORTS_WORKDIR, analyze_video_pipeline, preview_shorts_frames, render_ai_shorts, sample_video_frames, save_uploaded_bytes
-from storage import PRIORITIES, STAGES, list_api_cache_rows, load_calendar, load_vault_settings, save_calendar, save_vault_settings
+from storage import (
+    PRIORITIES,
+    STAGES,
+    delete_shorts_project,
+    list_api_cache_rows,
+    list_shorts_projects,
+    load_calendar,
+    load_shorts_project,
+    load_vault_settings,
+    save_calendar,
+    save_shorts_project,
+    save_vault_settings,
+)
 from youtube_cache import (
     cached_channel_profile,
     cached_comment_threads,
@@ -184,6 +196,12 @@ class ShortsRenderRequest(BaseModel):
 class ShortsPreviewRequest(BaseModel):
     main_video_path: str
     shorts: list[ShortsPlanClip]
+
+
+class ShortsProjectSaveRequest(BaseModel):
+    id: str = ""
+    title: str = "Untitled Shorts Project"
+    payload: dict[str, Any]
 
 
 ACTION_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "creator_action_log.jsonl"
@@ -1207,3 +1225,34 @@ def preview_shorts_from_ai_plan(request: ShortsPreviewRequest) -> dict[str, Any]
         "message": f"Built {len(frames)} cut preview frame(s).",
         "frames": frames,
     }
+
+
+@app.get("/api/shorts/projects")
+def list_saved_shorts_projects() -> dict[str, Any]:
+    return {"projects": list_shorts_projects()}
+
+
+@app.get("/api/shorts/projects/{project_id}")
+def get_saved_shorts_project(project_id: str) -> dict[str, Any]:
+    project = load_shorts_project(project_id)
+    if project is None:
+        return {"success": False, "message": "Shorts project was not found.", "project": None}
+    return {"success": True, "message": "Shorts project loaded.", "project": project}
+
+
+@app.post("/api/shorts/projects")
+def save_saved_shorts_project(request: ShortsProjectSaveRequest) -> dict[str, Any]:
+    project = save_shorts_project(
+        {
+            "id": request.id,
+            "title": request.title,
+            "payload": request.payload,
+        }
+    )
+    return {"success": True, "message": "Shorts project saved.", "project": project, "projects": list_shorts_projects()}
+
+
+@app.delete("/api/shorts/projects/{project_id}")
+def remove_saved_shorts_project(project_id: str) -> dict[str, Any]:
+    delete_shorts_project(project_id)
+    return {"success": True, "message": "Shorts project deleted.", "projects": list_shorts_projects()}

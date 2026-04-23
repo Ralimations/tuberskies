@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +102,17 @@ def initialize_database() -> None:
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (cache_key, cache_date)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS shorts_projects (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT '',
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -443,6 +455,74 @@ def save_api_cache(cache_key: str, cache_date: str, payload: Any, message: str =
             """,
             (cache_key, cache_date, json.dumps(payload, ensure_ascii=False), message),
         )
+        connection.commit()
+
+
+def list_shorts_projects() -> list[dict[str, Any]]:
+    initialize_database()
+    with _connect_database() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, title, updated_at, created_at
+            FROM shorts_projects
+            ORDER BY updated_at DESC
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def load_shorts_project(project_id: str) -> dict[str, Any] | None:
+    initialize_database()
+    with _connect_database() as connection:
+        row = connection.execute(
+            """
+            SELECT id, title, payload_json, created_at, updated_at
+            FROM shorts_projects
+            WHERE id = ?
+            """,
+            (project_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        payload = json.loads(row["payload_json"])
+    except json.JSONDecodeError:
+        payload = {}
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "payload": payload if isinstance(payload, dict) else {},
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def save_shorts_project(project: dict[str, Any]) -> dict[str, Any]:
+    initialize_database()
+    project_id = str(project.get("id") or uuid.uuid4().hex)
+    title = str(project.get("title") or "Untitled Shorts Project").strip() or "Untitled Shorts Project"
+    payload = project.get("payload", {})
+    with _connect_database() as connection:
+        connection.execute(
+            """
+            INSERT INTO shorts_projects (id, title, payload_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                payload_json = excluded.payload_json,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (project_id, title, json.dumps(payload, ensure_ascii=False)),
+        )
+        connection.commit()
+    saved = load_shorts_project(project_id)
+    return saved or {"id": project_id, "title": title, "payload": payload, "created_at": "", "updated_at": ""}
+
+
+def delete_shorts_project(project_id: str) -> None:
+    initialize_database()
+    with _connect_database() as connection:
+        connection.execute("DELETE FROM shorts_projects WHERE id = ?", (project_id,))
         connection.commit()
 
 

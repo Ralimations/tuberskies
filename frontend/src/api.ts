@@ -1,4 +1,4 @@
-import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPreviewPayload, ShortsRenderPayload, VaultPayload, YoutubeRefreshPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPreviewPayload, ShortsProjectPayload, ShortsRenderPayload, VaultPayload, YoutubeRefreshPayload } from "./types";
 
 export async function loadBootstrap(): Promise<BootstrapPayload> {
   const response = await fetch("/api/bootstrap");
@@ -218,4 +218,28 @@ export function previewShortsFromAiPlan(payload: {
       shorts: payload.shorts
     })
   });
+}
+
+export function listShortsProjects(): Promise<{ projects: ShortsProjectPayload[] }> {
+  return requestJson("/api/shorts/projects");
+}
+
+export function loadShortsProject(projectId: string): Promise<{ success: boolean; message: string; project: ShortsProjectPayload | null }> {
+  return requestJson(`/api/shorts/projects/${encodeURIComponent(projectId)}`);
+}
+
+export function saveShortsProject(payload: {
+  id?: string;
+  title: string;
+  payload: ShortsProjectPayload["payload"];
+}): Promise<{ success: boolean; message: string; project: ShortsProjectPayload; projects: ShortsProjectPayload[] }> {
+  return requestJson("/api/shorts/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteShortsProject(projectId: string): Promise<{ success: boolean; message: string; projects: ShortsProjectPayload[] }> {
+  return requestJson(`/api/shorts/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" });
 }

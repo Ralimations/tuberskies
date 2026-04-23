@@ -185,3 +185,21 @@ export type ShortsPreviewPayload = {
     imageDataUrl: string;
   }[];
 };
+
+export type ShortsProjectPayload = {
+  id: string;
+  title: string;
+  payload: {
+    result?: ShortsAiAnalyzePayload;
+    editableShorts?: ShortsPlanClip[];
+    renderResult?: ShortsRenderPayload | null;
+    previewResult?: ShortsPreviewPayload | null;
+    layout?: string;
+    captionTone?: string;
+    objective?: string;
+    whisperModel?: string;
+    visionModel?: string;
+  };
+  created_at: string;
+  updated_at: string;
+};
