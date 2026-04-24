@@ -4,6 +4,13 @@ import re
 
 import pandas as pd
 
+KEYWORD_COLUMNS = ["keyword", "demand", "competition", "channel_fit", "score"]
+
+
+def _empty_keyword_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=KEYWORD_COLUMNS)
+
+
 def extract_keyword_candidates(text: str) -> list[str]:
     words = re.findall(r"[A-Za-z0-9']+", text.lower())
     stop_words = {
@@ -24,10 +31,16 @@ def extract_keyword_candidates(text: str) -> list[str]:
 def build_keyword_opportunity_df(topic: str, working_title: str, calendar_df: pd.DataFrame) -> pd.DataFrame:
     source_text = f"{topic} {working_title}".strip()
     if not source_text:
-        return pd.DataFrame(columns=["keyword", "demand", "competition", "channel_fit", "score"])
+        return _empty_keyword_frame()
     candidates = extract_keyword_candidates(source_text)
     if not candidates:
-        return pd.DataFrame(columns=["keyword", "demand", "competition", "channel_fit", "score"])
+        return _empty_keyword_frame()
+
+    if calendar_df is None or calendar_df.empty:
+        calendar_df = pd.DataFrame(columns=["content_pillar", "notes"])
+    for column in ["content_pillar", "notes"]:
+        if column not in calendar_df.columns:
+            calendar_df[column] = ""
 
     channel_context = " ".join(calendar_df["content_pillar"].fillna("").astype(str).tolist()).lower()
     notes_context = " ".join(calendar_df["notes"].fillna("").astype(str).tolist()).lower()
@@ -48,10 +61,16 @@ def build_keyword_opportunity_df(topic: str, working_title: str, calendar_df: pd
         score = round(demand * 0.35 + (11 - competition) * 0.25 + fit * 0.4, 1)
         rows.append({"keyword": candidate, "demand": demand, "competition": competition, "channel_fit": fit, "score": score})
     if not rows:
-        return pd.DataFrame(columns=["keyword", "demand", "competition", "channel_fit", "score"])
+        return _empty_keyword_frame()
 
-    frame = pd.DataFrame(rows).drop_duplicates(subset=["keyword"]).sort_values(["score", "channel_fit"], ascending=False)
-    return frame.head(10).reset_index(drop=True)
+    frame = pd.DataFrame(rows)
+    for column in KEYWORD_COLUMNS:
+        if column not in frame.columns:
+            frame[column] = 0 if column != "keyword" else ""
+    frame = frame[KEYWORD_COLUMNS].drop_duplicates(subset=["keyword"])
+    if frame.empty:
+        return _empty_keyword_frame()
+    return frame.sort_values(["score", "channel_fit"], ascending=False).head(10).reset_index(drop=True)
 
 
 def build_title_scorecard(title: str, topic: str) -> list[tuple[str, str]]:

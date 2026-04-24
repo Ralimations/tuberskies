@@ -177,33 +177,6 @@ def build_action_feed_cards(
             }
         )
 
-    if video_df is not None and not video_df.empty and "comment_count" in video_df.columns:
-        comment_total = int(video_df["comment_count"].fillna(0).sum())
-        if comment_total > 0:
-            cards.append(
-                {
-                    "category": "Production",
-                    "title": "Reply to recent comments safely",
-                    "age": "community",
-                    "body": f"Your loaded upload window has {comment_total:,} comments. Draft warm replies, then post one at a time from Creator Actions.",
-                    "tags": [("Replies", "Manual"), ("Bulk", "Disabled")],
-                    "cta": "Open Comment Inbox",
-                    "href": _href({"view": "Creator Actions"}),
-                }
-            )
-    else:
-        cards.append(
-            {
-                "category": "Research",
-                "title": "Extract fan-request signals",
-                "age": "idea source",
-                "body": "Paste comments or Ko-fi requests so A.R.I.A. can detect repeated songs, artists, and high-retention request themes.",
-                "tags": [("Requests", "Ready"), ("Source", "Comments")],
-                    "cta": "Open Ideation",
-                    "href": _href({"view": "Niche Lab"}),
-            }
-        )
-
     priority_row = _best_calendar_row(calendar_df)
     if priority_row is not None and str(priority_row.get("stage", "")) in {"Upload", "Video Editing", "BandLab Recording"}:
         cards.append(

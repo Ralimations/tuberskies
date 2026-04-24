@@ -111,19 +111,10 @@ export type CreatorActionsPayload = {
     watch_time_hours: number;
     engagement_score: number;
     reason: string;
+    suggestion: string;
   }[];
   message: string;
   guardrails: [string, string][];
-};
-
-export type CommentRow = {
-  author?: string;
-  text?: string;
-  comment_id?: string;
-  video_id?: string;
-  can_reply?: boolean;
-  already_replied?: boolean;
-  reply_count?: number;
 };
 
 export type IdeationScorePayload = {
@@ -165,6 +156,9 @@ export type ShortsPlanClip = {
 };
 
 export type ShortsAiAnalyzePayload = {
+  success?: boolean;
+  message?: string;
+  warnings?: string[];
   main_video_path: string;
   broll_video_path: string;
   segments: Record<string, unknown>[];

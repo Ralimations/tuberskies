@@ -1,1 +1,1 @@
-"""A.R.I.A. Streamlit application package."""
+"""Shared A.R.I.A. creator intelligence modules."""

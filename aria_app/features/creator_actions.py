@@ -13,8 +13,6 @@ from aria_app.ui import render_editorial_list, render_panel_header, render_secti
 from youtube_cache import cached_video_performance
 from youtube_client import (
     get_owned_video_metadata,
-    list_recent_comment_threads,
-    reply_to_comment,
     update_owned_video_metadata,
 )
 
@@ -51,8 +49,7 @@ def _render_safety_note() -> None:
         "Safety Guardrails",
         [
             ("No autopilot", "A.R.I.A. drafts only; you approve each publish."),
-            ("No bulk replies", "Replies are sent one comment at a time."),
-            ("No duplicate spam", "Already-replied threads are flagged before posting."),
+            ("Lowest first", "Metadata actions prioritize weaker uploads before healthy ones."),
             ("Official API", "Uses YouTube OAuth, not browser automation."),
         ],
     )
@@ -141,87 +138,12 @@ def _render_metadata_actions(video_df: pd.DataFrame | None) -> None:
             st.error(message)
 
 
-def _render_comment_actions(video_df: pd.DataFrame | None) -> None:
-    render_panel_header("Comment Reply Inbox", "Review recent comments, draft a human reply, and post one reply at a time.")
-    options = [("All recent channel comments", "")]
-    options.extend(_video_options(video_df))
-    labels = [label for label, _ in options]
-    selected_label = st.selectbox("Comment source", options=labels, key="comment_source_select")
-    selected_video_id = dict(options)[selected_label]
-
-    load_col, draft_col = st.columns(2)
-    if load_col.button("Load Recent Comments", key="load_recent_comments", use_container_width=True):
-        rows, message = list_recent_comment_threads(st.session_state.vault_settings, video_id=selected_video_id, max_results=20)
-        st.session_state.creator_comment_rows = rows
-        st.session_state.creator_comment_status = message
-
-    if st.session_state.get("creator_comment_status"):
-        st.info(st.session_state.creator_comment_status)
-
-    rows = st.session_state.get("creator_comment_rows", [])
-    if not rows:
-        st.info("Load comments to begin.")
-        return
-
-    comment_labels = []
-    for index, row in enumerate(rows):
-        status = "replied" if row.get("already_replied") else "open"
-        comment_labels.append(f"{index + 1}. {row.get('author', 'Unknown')} | {status} | {str(row.get('text', ''))[:80]}")
-    selected_comment_label = st.selectbox("Comment to review", options=comment_labels, key="selected_comment_label")
-    selected_index = comment_labels.index(selected_comment_label)
-    selected = rows[selected_index]
-
-    render_editorial_list(
-        "Selected Comment",
-        [
-            ("Author", str(selected.get("author", "Unknown"))),
-            ("Can Reply", "Yes" if selected.get("can_reply") else "No"),
-            ("Already Replied", "Yes" if selected.get("already_replied") else "No"),
-            ("Replies", str(selected.get("reply_count", 0))),
-        ],
-    )
-    st.text_area("Comment text", value=str(selected.get("text", "")), height=120, disabled=True)
-
-    if draft_col.button("Draft Safe Reply", key="draft_comment_reply", use_container_width=True):
-        prompt = textwrap.dedent(
-            f"""
-            Draft one warm, natural YouTube reply from Ralskies.
-            Keep it specific, non-spammy, and under 300 characters.
-            Do not overpromise. Do not use repeated promotional language.
-
-            Comment author: {selected.get("author", "Unknown")}
-            Comment: {selected.get("text", "")}
-            """
-        ).strip()
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream_ollama_response(prompt, st.session_state.vault_settings.get("ollama_model", "gemma")))
-        st.session_state.creator_reply_draft = response or ""
-
-    reply_text = st.text_area("Reviewed reply", value=st.session_state.get("creator_reply_draft", ""), height=120, key="creator_reply_text")
-    reviewed = st.checkbox("I reviewed this reply and want to post it to YouTube.", key="comment_reply_reviewed")
-    disabled = not reviewed or not selected.get("can_reply") or selected.get("already_replied")
-    if st.button("Post One Reply", type="primary", key="post_one_reply", disabled=disabled):
-        success, message = reply_to_comment(st.session_state.vault_settings, str(selected.get("comment_id", "")), reply_text)
-        if success:
-            _log_action("comment_reply", {"comment_id": selected.get("comment_id", ""), "video_id": selected.get("video_id", "")})
-            st.success(message)
-            st.session_state.creator_reply_draft = ""
-        else:
-            st.error(message)
-    if selected.get("already_replied"):
-        st.warning("This thread already has a channel reply loaded in the current API response. A.R.I.A. will not post another from this screen.")
-
-
 def render_creator_actions() -> None:
-    render_section_header("Channel Ops", "Creator Actions", "Draft, review, and publish YouTube metadata or comment replies with channel-safe guardrails.")
+    render_section_header("Channel Ops", "Creator Actions", "Draft, review, and publish YouTube metadata with channel-safe guardrails.")
     _render_safety_note()
 
     video_df, video_message = cached_video_performance(st.session_state.vault_settings)
     if video_message:
         st.caption(video_message)
 
-    active = st.radio("Action type", options=["Metadata", "Comments"], horizontal=True, label_visibility="collapsed")
-    if active == "Metadata":
-        _render_metadata_actions(video_df)
-    else:
-        _render_comment_actions(video_df)
+    _render_metadata_actions(video_df)

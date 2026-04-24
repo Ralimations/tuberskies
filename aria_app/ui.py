@@ -112,7 +112,6 @@ def render_header_navigation() -> str:
         '<div class="appbar-mark">A</div>'
         '<div class="sidebar-brand-text">A.R.I.A.</div>'
         '</div>'
-        '<a class="new-chat-link" href="?view=Command%20Center" target="_self">New Brief</a>'
         f'<div class="header-menu-shell">{group_markup}</div>'
         '<div class="sidebar-upgrade">Local-first creator intelligence</div>'
         '</aside>'

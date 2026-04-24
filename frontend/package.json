@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "dev": "node ./scripts/vite-safe.mjs",
+    "build": "tsc && node ./scripts/vite-safe.mjs build",
+    "preview": "node ./scripts/vite-safe.mjs preview"
   },
   "dependencies": {
     "react": "^19.0.0",

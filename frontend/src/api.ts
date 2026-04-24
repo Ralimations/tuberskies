@@ -1,4 +1,4 @@
-import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CommentRow, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPreviewPayload, ShortsProjectPayload, ShortsRenderPayload, VaultPayload, YoutubeRefreshPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPreviewPayload, ShortsProjectPayload, ShortsRenderPayload, VaultPayload, YoutubeRefreshPayload } from "./types";
 
 export async function loadBootstrap(): Promise<BootstrapPayload> {
   const response = await fetch("/api/bootstrap");
@@ -41,7 +41,14 @@ export async function askAriaStream(message: string, history: ChatMessage[], onC
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) {
-    throw new Error(`${path} failed: ${response.status}`);
+    let detail = "";
+    try {
+      const payload = await response.json();
+      detail = String(payload.detail ?? payload.message ?? "");
+    } catch {
+      detail = await response.text().catch(() => "");
+    }
+    throw new Error(`${path} failed: ${response.status}${detail ? ` - ${detail}` : ""}`);
   }
   return response.json();
 }
@@ -118,31 +125,7 @@ export function publishMetadata(payload: { video_id: string; title: string; desc
   });
 }
 
-export function loadComments(videoId: string): Promise<{ rows: CommentRow[]; message: string }> {
-  return requestJson("/api/creator-actions/comments/list", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ video_id: videoId })
-  });
-}
-
-export function draftComment(author: string, text: string): Promise<{ content: string }> {
-  return requestJson("/api/creator-actions/comments/draft", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ author, text })
-  });
-}
-
-export function publishComment(payload: { comment_id: string; reply_text: string; reviewed: boolean }): Promise<{ success: boolean; message: string }> {
-  return requestJson("/api/creator-actions/comments/publish", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
-export function generateIdeation(payload: { topic: string; working_title: string; action: string; fan_request?: string; comment_dump?: string }): Promise<{ content: string }> {
+export function generateIdeation(payload: { topic: string; working_title: string; action: string; fan_request?: string }): Promise<{ content: string }> {
   return requestJson("/api/ideation/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -160,6 +143,14 @@ export function scoreIdeation(topic: string, workingTitle: string): Promise<Idea
 
 export function loadAnalytics(): Promise<AnalyticsPayload> {
   return requestJson("/api/analytics");
+}
+
+export function draftUploadTips(upload: Record<string, unknown>, uploadKind: string): Promise<{ content: string }> {
+  return requestJson("/api/upload-lab/tips", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ upload, upload_kind: uploadKind })
+  });
 }
 
 export function analyzeShortsWithAi(payload: {

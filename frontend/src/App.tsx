@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import {
   analyzeShortsWithAi,
   askAria,
@@ -9,6 +9,7 @@ import {
   coachRepertoire,
   deleteShortsProject,
   draftMetadata,
+  draftUploadTips,
   generateIdeation,
   loadAnalytics,
   loadBootstrap,
@@ -35,7 +36,7 @@ const fallbackData: BootstrapPayload = {
     { label: "Analytics", path: "/analytics", icon: "chart", group: "Home" },
     { label: "Creator Actions", path: "/creator-actions", icon: "reply", group: "Home" },
     { label: "Upload Lab", path: "/upload-lab", icon: "upload", group: "More tools" },
-    { label: "Pattern Memory", path: "/pattern-memory", icon: "memory", group: "More tools" },
+    { label: "A.R.I.A. Memory", path: "/pattern-memory", icon: "memory", group: "More tools" },
     { label: "Repertoire", path: "/repertoire", icon: "music", group: "More tools" },
     { label: "Shorts Architect", path: "/shorts", icon: "scissors", group: "More tools" },
     { label: "The Vault", path: "/vault", icon: "vault", group: "More tools" }
@@ -75,9 +76,37 @@ function navigateTo(path: string) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+const startupSteps = ["Connect API", "Load daily cache", "Wake local AI", "Open studio"];
+
+function useStoredState<T>(key: string, fallback: T): [T, (value: T | ((current: T) => T)) => void] {
+  const [state, setState] = useState<T>(() => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) as T : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+
+  function updateState(value: T | ((current: T) => T)) {
+    setState((current) => {
+      const next = typeof value === "function" ? (value as (current: T) => T)(current) : value;
+      try {
+        window.localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // Persistence is best-effort; the in-memory workspace still keeps running.
+      }
+      return next;
+    });
+  }
+
+  return [state, updateState];
+}
+
 export function App() {
   const [data, setData] = useState<BootstrapPayload>(fallbackData);
   const [path, setPath] = useState(currentPath());
+  const [visitedPaths, setVisitedPaths] = useState<Set<string>>(() => new Set([currentPath()]));
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -97,9 +126,25 @@ export function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  useEffect(() => {
+    setVisitedPaths((current) => {
+      if (current.has(path)) return current;
+      return new Set([...current, path]);
+    });
+  }, [path]);
+
   function navigate(item: NavItem) {
     window.history.pushState({}, "", item.path);
     setPath(item.path);
+  }
+
+  function route(pathName: string, child: ReactNode) {
+    if (!visitedPaths.has(pathName)) return null;
+    return (
+      <div className="route-panel" hidden={path !== pathName}>
+        {child}
+      </div>
+    );
   }
 
   return (
@@ -107,18 +152,47 @@ export function App() {
       <Sidebar items={data.navigation} activePath={path} onNavigate={navigate} />
       <main className="workspace">
         {loadError ? <div className="status error">{loadError}</div> : null}
-        {loading ? <div className="status">Loading A.R.I.A. context...</div> : null}
-        {path === "/" ? <AskPage data={data} /> : null}
-        {path === "/analytics" ? <AnalyticsPage data={data} /> : null}
-        {path === "/creator-actions" ? <CreatorActionsPage /> : null}
-        {path === "/upload-lab" ? <UploadLabPage data={data} /> : null}
-        {path === "/pattern-memory" ? <PatternPage data={data} /> : null}
-        {path === "/ideation" ? <IdeationPage /> : null}
-        {path === "/repertoire" ? <RepertoirePage data={data} /> : null}
-        {path === "/shorts" ? <ShortsArchitectPage /> : null}
-        {path === "/vault" ? <VaultPage /> : null}
+        {loading ? (
+          <StartupScreen />
+        ) : (
+          <>
+            {route("/", <AskPage data={data} />)}
+            {route("/analytics", <AnalyticsPage data={data} />)}
+            {route("/creator-actions", <CreatorActionsPage />)}
+            {route("/upload-lab", <UploadLabPage data={data} />)}
+            {route("/pattern-memory", <PatternPage data={data} />)}
+            {route("/ideation", <IdeationPage />)}
+            {route("/repertoire", <RepertoirePage data={data} />)}
+            {route("/shorts", <ShortsArchitectPage />)}
+            {route("/vault", <VaultPage />)}
+          </>
+        )}
       </main>
     </div>
+  );
+}
+
+function StartupScreen() {
+  return (
+    <section className="startup-screen" aria-live="polite" aria-label="A.R.I.A. Studio is starting">
+      <div className="startup-mark">A</div>
+      <div className="startup-copy">
+        <span>Starting A.R.I.A. Studio</span>
+        <h1>Loading today&apos;s creator context</h1>
+        <p>Checking the local API, cached YouTube data, and your local AI workspace.</p>
+      </div>
+      <div className="startup-meter" aria-hidden="true">
+        <span />
+      </div>
+      <div className="startup-steps">
+        {startupSteps.map((step, index) => (
+          <div className="startup-step" key={step}>
+            <span>{index + 1}</span>
+            <strong>{step}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -157,22 +231,51 @@ function AskPage({ data }: { data: BootstrapPayload }) {
   const suggestions = freshness.freshToday
     ? data.chatSuggestions
     : ["What can I trust in the stored data?", ...data.chatSuggestions.slice(0, 3)];
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content: `Ask me what to fix, repeat, post, package, or turn into Shorts. I am reading ${freshness.chatLabel}.`
-    }
-  ]);
+  const starterMessage: ChatMessage = {
+    role: "assistant",
+    content: `Ask me what to fix, repeat, post, package, or turn into Shorts. I am reading ${freshness.chatLabel}.`
+  };
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>(() => loadChatSessions(starterMessage));
+  const [activeChatId, setActiveChatId] = useState(() => chatSessions[0]?.id ?? createChatId());
+  const activeSession = chatSessions.find((session) => session.id === activeChatId) ?? chatSessions[0];
+  const messages = activeSession?.messages ?? [starterMessage];
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const [responseStarted, setResponseStarted] = useState(false);
 
   useEffect(() => {
-    setMessages((current) => {
-      if (current.length !== 1 || current[0].role !== "assistant") return current;
-      return [{ role: "assistant", content: `Ask me what to fix, repeat, post, package, or turn into Shorts. I am reading ${freshness.chatLabel}.` }];
+    setChatSessions((current) => {
+      const next = current.map((session) => {
+        if (session.messages.length !== 1 || session.messages[0].role !== "assistant") return session;
+        return { ...session, messages: [starterMessage], updatedAt: Date.now() };
+      });
+      saveChatSessions(next);
+      return next;
     });
   }, [freshness.chatLabel]);
+
+  function updateActiveMessages(nextMessages: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) {
+    setChatSessions((current) => {
+      const next = current.map((session) => {
+        if (session.id !== activeChatId) return session;
+        const messagesValue = typeof nextMessages === "function" ? nextMessages(session.messages) : nextMessages;
+        return { ...session, messages: messagesValue, title: chatTitle(messagesValue), updatedAt: Date.now() };
+      });
+      saveChatSessions(next);
+      return next;
+    });
+  }
+
+  function startNewChat() {
+    const nextSession = createChatSession(starterMessage);
+    setChatSessions((current) => {
+      const next = [nextSession, ...current].slice(0, 12);
+      saveChatSessions(next);
+      return next;
+    });
+    setActiveChatId(nextSession.id);
+    setDraft("");
+  }
 
   async function submitMessage(message: string) {
     const clean = message.trim();
@@ -182,7 +285,7 @@ function AskPage({ data }: { data: BootstrapPayload }) {
 
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: clean }];
     const assistantIndex = nextMessages.length;
-    setMessages([...nextMessages, { role: "assistant", content: "" }]);
+    updateActiveMessages([...nextMessages, { role: "assistant", content: "" }]);
     setDraft("");
     setThinking(true);
     setResponseStarted(false);
@@ -191,12 +294,12 @@ function AskPage({ data }: { data: BootstrapPayload }) {
       await askAriaStream(clean, nextMessages, (chunk) => {
         accumulated += chunk;
         setResponseStarted(true);
-        setMessages((current) =>
+        updateActiveMessages((current) =>
           current.map((item, index) => (index === assistantIndex ? { role: "assistant", content: accumulated } : item))
         );
       });
       if (!accumulated.trim()) {
-        setMessages((current) =>
+        updateActiveMessages((current) =>
           current.map((item, index) =>
             index === assistantIndex ? { role: "assistant", content: "A.R.I.A. did not return a response. Check Ollama, then try again." } : item
           )
@@ -205,9 +308,9 @@ function AskPage({ data }: { data: BootstrapPayload }) {
     } catch (error) {
       try {
         const response = await askAria(clean, nextMessages);
-        setMessages([...nextMessages, response]);
+        updateActiveMessages([...nextMessages, response]);
       } catch {
-        setMessages((current) =>
+        updateActiveMessages((current) =>
           current.map((item, index) =>
             index === assistantIndex ? { role: "assistant", content: error instanceof Error ? error.message : "A.R.I.A. could not respond." } : item
           )
@@ -227,6 +330,14 @@ function AskPage({ data }: { data: BootstrapPayload }) {
   return (
     <section className="home-stack">
       <TodayDesk data={data} freshness={freshness} />
+      <div className="chat-history-bar">
+        <button onClick={startNewChat}>New Chat</button>
+        <select value={activeChatId} onChange={(event) => setActiveChatId(event.target.value)}>
+          {chatSessions.map((session) => (
+            <option value={session.id} key={session.id}>{session.title}</option>
+          ))}
+        </select>
+      </div>
       <div className="suggestions">
         {suggestions.map((suggestion) => (
           <button key={suggestion} onClick={() => submitMessage(suggestion)}>
@@ -352,6 +463,56 @@ function TodayDesk({ data, freshness }: { data: BootstrapPayload; freshness: Ret
   );
 }
 
+type ChatSession = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  updatedAt: number;
+};
+
+const CHAT_HISTORY_KEY = "aria_chat_sessions";
+
+function createChatId() {
+  return `chat_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function chatTitle(messages: ChatMessage[]) {
+  const firstUser = messages.find((message) => message.role === "user")?.content.trim();
+  return firstUser ? firstUser.slice(0, 64) : "New A.R.I.A. chat";
+}
+
+function createChatSession(starterMessage: ChatMessage): ChatSession {
+  return {
+    id: createChatId(),
+    title: "New A.R.I.A. chat",
+    messages: [starterMessage],
+    updatedAt: Date.now()
+  };
+}
+
+function loadChatSessions(starterMessage: ChatMessage): ChatSession[] {
+  try {
+    const raw = window.localStorage.getItem(CHAT_HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed) && parsed.length) {
+      return parsed
+        .filter((session) => session && Array.isArray(session.messages))
+        .slice(0, 12);
+    }
+  } catch {
+    // Ignore malformed local history and start fresh.
+  }
+  return [createChatSession(starterMessage)];
+}
+
+function saveChatSessions(sessions: ChatSession[]) {
+  try {
+    window.localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(sessions.slice(0, 12)));
+  } catch {
+    // Local storage can be full or unavailable; chat still works for the session.
+  }
+}
+
 function AnalyticsPage({ data }: { data: BootstrapPayload }) {
   const [payload, setPayload] = useState<AnalyticsPayload | null>(null);
   const [metric, setMetric] = useState("views");
@@ -448,31 +609,152 @@ function AnalyticsPage({ data }: { data: BootstrapPayload }) {
 }
 
 function UploadLabPage({ data }: { data: BootstrapPayload }) {
-  const best = data.uploadTakeaways.best;
-  const weak = data.uploadTakeaways.weak;
+  const [mode, setMode] = useStoredState<"Shorts" | "Full Length">("aria_upload_lab_mode", "Shorts");
+  const [selectedIndex, setSelectedIndex] = useStoredState("aria_upload_lab_selected_index", 0);
+  const [tips, setTips] = useStoredState("aria_upload_lab_tips", "");
+  const [status, setStatus] = useState("");
+  const rows = data.videoRows;
+  const filteredRows = useMemo(() => rows.filter((row) => uploadKind(row) === mode), [rows, mode]);
+  const activeRows = filteredRows.length ? filteredRows : rows;
+  const ranked = [...activeRows].sort((a, b) => Number(b.engagement_score ?? 0) - Number(a.engagement_score ?? 0));
+  const best = ranked[0] ?? null;
+  const weak = ranked[ranked.length - 1] ?? null;
+  const current = activeRows[selectedIndex] ?? activeRows[0] ?? null;
+
+  useEffect(() => {
+    setSelectedIndex(0);
+    setTips("");
+  }, [mode]);
+
+  async function handleDraftTips(upload = current) {
+    if (!upload) return;
+    setStatus("A.R.I.A. is reading this upload...");
+    setTips("");
+    try {
+      const result = await draftUploadTips(upload, mode);
+      setTips(result.content);
+      setStatus("");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Upload tips failed.");
+    }
+  }
+
   return (
     <section className="page-stack">
-      <SectionHeader title="Upload Lab" copy="Inspect release history, repeat what works, and find weak packaging before the next upload." />
-      <div className="grid two-col">
-        <Panel title="Best Upload">{best ? <RecordSummary record={best} /> : <p>No upload data loaded.</p>}</Panel>
-        <Panel title="Weakest Upload">{weak ? <RecordSummary record={weak} /> : <p>No upload data loaded.</p>}</Panel>
+      <SectionHeader title="Upload Lab" copy="Compare Shorts and full videos, inspect current upload metrics, and ask A.R.I.A. what to improve." />
+      {status ? <div className="status">{status}</div> : null}
+      <div className="segmented">
+        {["Shorts", "Full Length"].map((item) => (
+          <button className={mode === item ? "active" : ""} key={item} onClick={() => setMode(item as "Shorts" | "Full Length")}>{item}</button>
+        ))}
       </div>
+      <Panel title="Current Upload">
+        {current ? (
+          <div className="upload-current">
+            <RecordSummary record={current} />
+            <label className="field">
+              <span>Upload</span>
+              <select value={selectedIndex} onChange={(event) => setSelectedIndex(Number(event.target.value))}>
+                {activeRows.map((row, index) => <option value={index} key={String(row.video_id ?? row.title ?? index)}>{String(row.title ?? "Untitled")}</option>)}
+              </select>
+            </label>
+            <button onClick={() => handleDraftTips(current)}>Ask A.R.I.A. For Tips</button>
+          </div>
+        ) : <p>No upload data loaded for this view.</p>}
+      </Panel>
+      <div className="grid two-col">
+        <Panel title={`Best ${mode}`}>{best ? <RecordSummary record={best} /> : <p>No upload data loaded.</p>}</Panel>
+        <Panel title={`Weakest ${mode}`}>{weak ? <RecordSummary record={weak} /> : <p>No upload data loaded.</p>}</Panel>
+      </div>
+      <Panel title="AI Suggested Tips">
+        <pre>{tips || "Select an upload and ask A.R.I.A. for tips."}</pre>
+      </Panel>
       <Panel title="Upload History">
-        <DataTable rows={data.videoRows} columns={["title", "views", "retention", "engagement_score"]} />
+        <DataTable rows={activeRows} columns={["title", "views", "retention", "watch_time_hours", "engagement_score"]} />
       </Panel>
     </section>
   );
 }
 
+function uploadKind(row: Record<string, unknown>) {
+  const title = String(row.title ?? "").toLowerCase();
+  const duration = Number(row.duration_seconds ?? row.duration ?? 0);
+  if (duration > 0) return duration <= 90 ? "Shorts" : "Full Length";
+  if (title.includes("#shorts") || title.includes("shorts") || title.includes("teaser") || title.includes("snippet")) return "Shorts";
+  return "Full Length";
+}
+
 function PatternPage({ data }: { data: BootstrapPayload }) {
+  const memory = data.patternMemory ?? {};
+  const publishMemory = asRecord(memory.publish_memory);
+  const stageMemory = asRecord(memory.stage_memory);
+  const repeatMore = asStringList(memory.repeat_more);
+  const reduceOrFix = asStringList(memory.reduce_or_fix);
+  const titlePatterns = asRecordList(memory.title_patterns);
+  const pillarMemory = asRecordList(memory.pillar_memory);
+  const weekdayRows = asRecordList(publishMemory.weekday_rows);
+  const stageRows = asRecordList(stageMemory.stage_rows);
+
   return (
     <section className="page-stack">
-      <SectionHeader title="Pattern Memory" copy="The remembered signals A.R.I.A. uses to avoid giving generic advice." />
-      <Panel title="Latest Snapshot">
-        <pre>{JSON.stringify(data.patternMemory ?? {}, null, 2)}</pre>
-      </Panel>
+      <SectionHeader title="A.R.I.A. Memory" copy="The patterns A.R.I.A. remembers so advice stays consistent instead of generic." />
+      <div className="grid two-col">
+        <Panel title="Repeat More">
+          <MemoryList items={repeatMore} empty="No repeat patterns have been learned yet." />
+        </Panel>
+        <Panel title="Reduce Or Fix">
+          <MemoryList items={reduceOrFix} empty="No reduce/fix signals have been learned yet." />
+        </Panel>
+      </div>
+      <div className="grid two-col">
+        <Panel title="Publishing Memory">
+          <div className="memory-summary">
+            <InfoRow label="Best Day" value={String(publishMemory.best_day ?? "Unknown")} />
+            <InfoRow label="Weak Day" value={String(publishMemory.weak_day ?? "Unknown")} />
+            <InfoRow label="Best Score" value={String(publishMemory.best_score ?? "Unavailable")} />
+          </div>
+          <DataTable rows={weekdayRows} columns={["weekday", "avg_views", "avg_retention", "publish_score"]} />
+        </Panel>
+        <Panel title="Repertoire Memory">
+          <div className="memory-summary">
+            <InfoRow label="Bottleneck" value={String(stageMemory.bottleneck_stage ?? "Unknown")} />
+            <InfoRow label="Items There" value={String(stageMemory.bottleneck_count ?? "0")} />
+            <InfoRow label="Overdue" value={String(stageMemory.overdue_count ?? "0")} />
+          </div>
+          <DataTable rows={stageRows} columns={["stage", "count"]} />
+        </Panel>
+      </div>
+      <div className="grid two-col">
+        <Panel title="Title Patterns">
+          <DataTable rows={titlePatterns} columns={["pattern", "type", "count"]} />
+        </Panel>
+        <Panel title="Content Pillars">
+          <DataTable rows={pillarMemory} columns={["pillar", "count"]} />
+        </Panel>
+      </div>
     </section>
   );
+}
+
+function MemoryList({ items, empty }: { items: string[]; empty: string }) {
+  if (!items.length) return <p>{empty}</p>;
+  return (
+    <div className="memory-list">
+      {items.map((item) => <p key={item}>{item}</p>)}
+    </div>
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asRecordList(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
+}
+
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : [];
 }
 
 const ideationActions = [
@@ -484,12 +766,12 @@ const ideationActions = [
 ] as const;
 
 function IdeationPage() {
-  const [topic, setTopic] = useState("");
-  const [workingTitle, setWorkingTitle] = useState("");
-  const [action, setAction] = useState("title_pack");
-  const [output, setOutput] = useState("");
-  const [lastAction, setLastAction] = useState("No generation yet.");
-  const [score, setScore] = useState<IdeationScorePayload>({ keywords: [], scorecard: [] });
+  const [topic, setTopic] = useStoredState("aria_ideation_topic", "");
+  const [workingTitle, setWorkingTitle] = useStoredState("aria_ideation_working_title", "");
+  const [action, setAction] = useStoredState("aria_ideation_action", "title_pack");
+  const [output, setOutput] = useStoredState("aria_ideation_output", "");
+  const [lastAction, setLastAction] = useStoredState("aria_ideation_last_action", "No generation yet.");
+  const [score, setScore] = useStoredState<IdeationScorePayload>("aria_ideation_score", { keywords: [], scorecard: [] });
   const [status, setStatus] = useState("");
 
   async function refreshScore(nextTopic = topic, nextTitle = workingTitle) {
@@ -500,12 +782,17 @@ function IdeationPage() {
     try {
       const result = await scoreIdeation(nextTopic, nextTitle);
       setScore(result);
+      setStatus((current) => current === "Keyword scoring failed." ? "" : current);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Keyword scoring failed.");
     }
   }
 
   async function runGeneration(nextAction = action) {
+    if (!topic.trim() && !workingTitle.trim()) {
+      setStatus("Add a song concept or working title first.");
+      return;
+    }
     setStatus("A.R.I.A. is shaping the concept...");
     setOutput("");
     try {
@@ -513,11 +800,10 @@ function IdeationPage() {
         topic,
         working_title: workingTitle,
         action: nextAction,
-        fan_request: "",
-        comment_dump: ""
+        fan_request: ""
       });
       setOutput(result.content);
-      setLastAction(ideationActions.find(([key]) => key === nextAction)?.[1] ?? "Comment Request Extraction");
+      setLastAction(ideationActions.find(([key]) => key === nextAction)?.[1] ?? "A.R.I.A. Generation");
       setStatus("");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Generation failed.");
@@ -585,9 +871,23 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
   const [payload, setPayload] = useState<RepertoirePayload | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[]>(data.calendarRows);
   const [status, setStatus] = useState("");
-  const [coachOutput, setCoachOutput] = useState("");
+  const [coachOutput, setCoachOutput] = useStoredState("aria_repertoire_coach_output", "");
+  const [coachLoading, setCoachLoading] = useState(false);
   const stages = payload?.stages ?? ["Song Idea", "Instrumental Prep", "BandLab Recording", "Video Editing", "Upload"];
   const priorities = payload?.priorities ?? ["Low", "Medium", "High"];
+  const boardGroups = [
+    {
+      label: "Song Ideas",
+      rows: rows.filter((row) => {
+        const pillar = String(row.content_pillar ?? "").toLowerCase();
+        return !pillar.includes("collab") && String(row.stage ?? "") === "Song Idea";
+      })
+    },
+    {
+      label: "Collabs",
+      rows: rows.filter((row) => String(row.content_pillar ?? "").toLowerCase().includes("collab"))
+    }
+  ];
 
   useEffect(() => {
     loadRepertoire()
@@ -616,6 +916,10 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
     ]);
   }
 
+  function deleteRow(index: number) {
+    setRows(rows.filter((_, rowIndex) => rowIndex !== index));
+  }
+
   async function saveRows() {
     setStatus("Saving repertoire...");
     try {
@@ -629,6 +933,7 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
   }
 
   async function coachRow(row: Record<string, unknown>) {
+    setCoachLoading(true);
     setCoachOutput("A.R.I.A. is reviewing this idea...");
     const prompt = [
       "You are A.R.I.A. helping Ralskies sharpen one repertoire idea.",
@@ -645,6 +950,8 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
       setCoachOutput(response.content);
     } catch (error) {
       setCoachOutput(error instanceof Error ? error.message : "Coach request failed.");
+    } finally {
+      setCoachLoading(false);
     }
   }
 
@@ -656,19 +963,20 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
         <div className="metric-card"><span>Total Songs</span><strong>{payload?.summary.total ?? rows.length}</strong><small>active concepts</small></div>
         <div className="metric-card"><span>Ready</span><strong>{payload?.summary.ready ?? 0}</strong><small>in upload stage</small></div>
         <div className="metric-card"><span>Due Soon</span><strong>{payload?.summary.due_soon ?? 0}</strong><small>next 14 days</small></div>
-        <div className="metric-card"><span>Stages</span><strong>{stages.length}</strong><small>workflow lanes</small></div>
+        <div className="metric-card"><span>Collabs</span><strong>{boardGroups[1].rows.length}</strong><small>collab concepts</small></div>
       </div>
       <Panel title="Idea Board">
         <div className="board-grid">
-          {stages.map((stage) => (
-            <div className="lane" key={stage}>
-              <h3>{stage}</h3>
-              {rows.filter((row) => row.stage === stage).slice(0, 5).map((row, index) => (
-                <button className="song-chip" key={`${stage}-${index}`} onClick={() => coachRow(row)}>
+          {boardGroups.map((group) => (
+            <div className="lane" key={group.label}>
+              <h3>{group.label}</h3>
+              {group.rows.slice(0, 8).map((row, index) => (
+                <button className="song-chip" key={`${group.label}-${index}-${String(row.title ?? "")}`} onClick={() => coachRow(row)}>
                   <strong>{String(row.title || "Untitled")}</strong>
-                  <span>{String(row.priority || "Medium")} priority</span>
+                  <span>{String(row.priority || "Medium")} priority | {String(row.stage || "Song Idea")}</span>
                 </button>
               ))}
+              {!group.rows.length ? <p>No {group.label.toLowerCase()} yet.</p> : null}
             </div>
           ))}
         </div>
@@ -687,6 +995,7 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
               <input value={String(row.content_pillar ?? "")} onChange={(event) => updateRow(index, "content_pillar", event.target.value)} placeholder="Pillar" />
               <input type="date" value={String(row.target_upload_date ?? "").slice(0, 10)} onChange={(event) => updateRow(index, "target_upload_date", event.target.value)} />
               <input value={String(row.notes ?? "")} onChange={(event) => updateRow(index, "notes", event.target.value)} placeholder="Notes" />
+              <button onClick={() => deleteRow(index)}>Delete</button>
             </div>
           ))}
         </div>
@@ -696,6 +1005,7 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
         </div>
       </Panel>
       <Panel title="A.R.I.A. Notes">
+        {coachLoading ? <div className="status">A.R.I.A. is reviewing this song...</div> : null}
         <pre>{coachOutput || "Select a song card to ask A.R.I.A. for focused feedback."}</pre>
       </Panel>
     </section>
@@ -704,55 +1014,76 @@ function RepertoirePage({ data }: { data: BootstrapPayload }) {
 
 function CreatorActionsPage() {
   const [payload, setPayload] = useState<CreatorActionsPayload | null>(null);
-  const [selectedVideoId, setSelectedVideoId] = useState("");
-  const [selectedVideoLabel, setSelectedVideoLabel] = useState("");
-  const [selectedReason, setSelectedReason] = useState("");
+  const [selectedVideoId, setSelectedVideoId] = useStoredState("aria_creator_selected_video_id", "");
+  const [selectedVideoLabel, setSelectedVideoLabel] = useStoredState("aria_creator_selected_video_label", "");
+  const [selectedReason, setSelectedReason] = useStoredState("aria_creator_selected_reason", "");
   const [status, setStatus] = useState("");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [tags, setTags] = useState("");
-  const [metadataDraft, setMetadataDraft] = useState("");
+  const [title, setTitle] = useStoredState("aria_creator_title", "");
+  const [description, setDescription] = useStoredState("aria_creator_description", "");
+  const [tags, setTags] = useStoredState("aria_creator_tags", "");
+  const [metadataDraft, setMetadataDraft] = useStoredState("aria_creator_metadata_draft", "");
   const [reviewed, setReviewed] = useState(false);
+  const [preparing, setPreparing] = useState(false);
 
   useEffect(() => {
     loadCreatorActions()
       .then((result) => {
         setPayload(result);
-        const first = result.metadataActions[0] ?? result.videos[0];
-        if (first) {
-          setSelectedVideoId(first.video_id);
-          setSelectedVideoLabel(first.label);
-          setSelectedReason("reason" in first ? String(first.reason ?? "") : "");
+        const savedAction = result.metadataActions.find((action) => action.video_id === selectedVideoId);
+        const first = savedAction ?? result.metadataActions[0];
+        if (first && !metadataDraft) {
+          prepareMetadataAction(first, true);
+        } else if (savedAction) {
+          setSelectedVideoLabel(savedAction.label);
+          setSelectedReason(savedAction.reason);
         }
       })
       .catch((error: Error) => setStatus(error.message));
   }, []);
 
-  function onVideoChange(videoId: string) {
-    const selectedAction = payload?.metadataActions.find((video) => video.video_id === videoId);
-    const selected = selectedAction ?? payload?.videos.find((video) => video.video_id === videoId);
-    setSelectedVideoId(videoId);
-    setSelectedVideoLabel(selected?.label ?? "");
-    setSelectedReason(selectedAction?.reason ?? "");
+  async function prepareMetadataAction(action: CreatorActionsPayload["metadataActions"][number], automatic = false) {
+    setSelectedVideoId(action.video_id);
+    setSelectedVideoLabel(action.label);
+    setSelectedReason(action.reason);
     setReviewed(false);
-  }
-
-  async function handleLoadMetadata() {
-    if (!selectedVideoId) return;
-    setStatus("Loading metadata...");
-    const result = await loadMetadata(selectedVideoId);
-    setStatus(result.message);
-    if (result.metadata) {
-      setTitle(String(result.metadata.title ?? ""));
-      setDescription(String(result.metadata.description ?? ""));
-      setTags(Array.isArray(result.metadata.tags) ? result.metadata.tags.join(", ") : "");
+    setPreparing(true);
+    setStatus(automatic ? "Preparing the top metadata fix..." : "Preparing selected metadata fix...");
+    setMetadataDraft("A.R.I.A. is drafting metadata...");
+    setTitle(action.title);
+    setDescription("");
+    setTags("");
+    try {
+      const result = await loadMetadata(action.video_id);
+      const currentTitle = result.metadata ? String(result.metadata.title ?? action.title) : action.title;
+      if (result.metadata) {
+        setTitle(currentTitle);
+        setDescription(String(result.metadata.description ?? ""));
+        setTags(Array.isArray(result.metadata.tags) ? result.metadata.tags.join(", ") : "");
+      }
+      const draft = await draftMetadata(action.label, `${action.reason}. ${action.suggestion}`, currentTitle);
+      setMetadataDraft(draft.content);
+      setStatus(result.message || "Metadata fix prepared.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Metadata preparation failed.");
+      setMetadataDraft("");
+    } finally {
+      setPreparing(false);
     }
   }
 
   async function handleDraftMetadata() {
+    if (!selectedVideoLabel) return;
+    setPreparing(true);
     setMetadataDraft("A.R.I.A. is drafting metadata...");
-    const result = await draftMetadata(selectedVideoLabel, selectedReason, title);
-    setMetadataDraft(result.content);
+    try {
+      const result = await draftMetadata(selectedVideoLabel, selectedReason, title);
+      setMetadataDraft(result.content);
+      setStatus("Metadata draft refreshed.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Metadata draft failed.");
+    } finally {
+      setPreparing(false);
+    }
   }
 
   async function handlePublishMetadata() {
@@ -784,31 +1115,28 @@ function CreatorActionsPage() {
             <button
               className={selectedVideoId === action.video_id ? "active" : ""}
               key={action.video_id}
-              onClick={() => onVideoChange(action.video_id)}
+              onClick={() => prepareMetadataAction(action)}
+              disabled={preparing}
             >
               <strong>{action.title}</strong>
               <span>{action.reason} | {action.views.toLocaleString()} views | {Math.round(action.retention)}% retention</span>
+              <small>{action.suggestion}</small>
             </button>
           )) : <p>No low-performing metadata actions were loaded yet.</p>}
         </div>
-        <label className="field">
-          <span>All Videos</span>
-          <select value={selectedVideoId} onChange={(event) => onVideoChange(event.target.value)}>
-            {(payload?.videos ?? []).map((video) => <option value={video.video_id} key={video.video_id}>{video.label}</option>)}
-          </select>
-        </label>
         {selectedAction ? (
           <div className="creator-action-summary">
             <InfoRow label="Priority" value={selectedAction.reason} />
             <InfoRow label="Views" value={selectedAction.views.toLocaleString()} />
             <InfoRow label="Retention" value={`${Math.round(selectedAction.retention)}%`} />
             <InfoRow label="Score" value={String(Math.round(selectedAction.engagement_score))} />
+            <InfoRow label="Suggested Fix" value={selectedAction.suggestion} />
           </div>
         ) : null}
         <div className="form-grid">
           <div className="button-row">
-            <button onClick={handleLoadMetadata}>Load Current Metadata</button>
-            <button onClick={handleDraftMetadata}>Draft Metadata Fix</button>
+            {selectedAction ? <button onClick={() => prepareMetadataAction(selectedAction)} disabled={preparing}>Reload Current Metadata</button> : null}
+            <button onClick={handleDraftMetadata} disabled={preparing || !selectedVideoId}>Refresh AI Draft</button>
           </div>
           <label className="field"><span>Title</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} /></label>
           <label className="field"><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={8} /></label>
@@ -991,26 +1319,28 @@ function ShortsArchitectPage() {
   const [brollVideo, setBrollVideo] = useState<File | null>(null);
   const [vaultSettings, setVaultSettings] = useState<VaultPayload["settings"] | null>(null);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [layout, setLayout] = useState("Solo Mode");
-  const [captionTone, setCaptionTone] = useState("#ffd166");
-  const [objective, setObjective] = useState("Retention hook");
-  const [whisperModel, setWhisperModel] = useState("small");
-  const [visionModel, setVisionModel] = useState("");
+  const [layout, setLayout] = useStoredState("aria_shorts_layout", "Solo Mode");
+  const [captionTone, setCaptionTone] = useStoredState("aria_shorts_caption_tone", "#ffd166");
+  const [objective, setObjective] = useStoredState("aria_shorts_objective", "Retention hook");
+  const [whisperModel, setWhisperModel] = useStoredState("aria_shorts_whisper_model", "small");
+  const [visionModel, setVisionModel] = useStoredState("aria_shorts_vision_model", "");
   const [status, setStatus] = useState("");
+  const [diagnostics, setDiagnostics] = useStoredState<string[]>("aria_shorts_diagnostics", []);
   const [analyzing, setAnalyzing] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [previewing, setPreviewing] = useState(false);
-  const [result, setResult] = useState<ShortsAiAnalyzePayload | null>(null);
-  const [renderResult, setRenderResult] = useState<ShortsRenderPayload | null>(null);
+  const [result, setResult] = useStoredState<ShortsAiAnalyzePayload | null>("aria_shorts_result", null);
+  const [renderResult, setRenderResult] = useStoredState<ShortsRenderPayload | null>("aria_shorts_render_result", null);
   const [previewResult, setPreviewResult] = useState<ShortsPreviewPayload | null>(null);
-  const [editableShorts, setEditableShorts] = useState<ShortsPlanClip[]>([]);
-  const [projectId, setProjectId] = useState("");
-  const [projectTitle, setProjectTitle] = useState("Untitled Shorts Project");
+  const [editableShorts, setEditableShorts] = useStoredState<ShortsPlanClip[]>("aria_shorts_editable_plan", []);
+  const [projectId, setProjectId] = useStoredState("aria_shorts_project_id", "");
+  const [projectTitle, setProjectTitle] = useStoredState("aria_shorts_project_title", "Untitled Shorts Project");
   const [savedProjects, setSavedProjects] = useState<ShortsProjectPayload[]>([]);
   const [projectBusy, setProjectBusy] = useState(false);
   const aiShorts = editableShorts;
   const activeVisionModel = visionModel.trim();
   const hasInvalidCuts = aiShorts.some((clip) => Number(clip.end ?? 0) <= Number(clip.start ?? 0));
+  const duetMissingBroll = layout === "Duet Mode" && !result?.broll_video_path;
   const previewFramesByIndex = useMemo(
     () => new Map((previewResult?.frames ?? []).map((frame) => [frame.index, frame])),
     [previewResult]
@@ -1021,7 +1351,10 @@ function ShortsArchitectPage() {
       .then((payload) => {
         setVaultSettings(payload.settings);
         setOllamaModels(payload.ollama_vision_models);
-        setVisionModel(payload.ollama_vision_models.includes(payload.settings.ollama_vision_model) ? payload.settings.ollama_vision_model : "");
+        setVisionModel((current) => {
+          if (current && payload.ollama_vision_models.includes(current)) return current;
+          return payload.ollama_vision_models.includes(payload.settings.ollama_vision_model) ? payload.settings.ollama_vision_model : "";
+        });
       })
       .catch(() => {
         setVaultSettings(null);
@@ -1038,6 +1371,7 @@ function ShortsArchitectPage() {
   async function runAiDirector() {
     if (!mainVideo || analyzing) return;
     setAnalyzing(true);
+    setDiagnostics([]);
     setStatus("A.R.I.A. is listening to the full performance, finding moments, and writing the cuts...");
     try {
       const nextResult = await analyzeShortsWithAi({
@@ -1048,6 +1382,13 @@ function ShortsArchitectPage() {
         objective,
         visionModel: activeVisionModel
       });
+      if (nextResult.success === false) {
+        setStatus(nextResult.message || "AI Shorts analysis failed.");
+        setDiagnostics(nextResult.warnings ?? []);
+        setResult(null);
+        setEditableShorts([]);
+        return;
+      }
       setResult(nextResult);
       const nextShorts = nextResult.aiPlan?.shorts ?? [];
       setEditableShorts(nextShorts);
@@ -1055,7 +1396,8 @@ function ShortsArchitectPage() {
       setPreviewResult(null);
       setProjectId("");
       setProjectTitle(nextResult.aiPlan?.video_title || mainVideo.name.replace(/\.[^.]+$/, "") || "Untitled Shorts Project");
-      setStatus(`AI plan ready: ${nextResult.aiPlan?.shorts?.length ?? 0} cut(s) selected.`);
+      setDiagnostics(nextResult.warnings ?? []);
+      setStatus(nextResult.message || `AI plan ready: ${nextResult.aiPlan?.shorts?.length ?? 0} cut(s) selected.`);
       if (nextShorts.length) {
         refreshCutPreviews(nextResult.main_video_path, nextShorts);
       }
@@ -1174,6 +1516,9 @@ function ShortsArchitectPage() {
       });
       setPreviewResult(nextPreview);
       setStatus(nextPreview.message);
+      if (!nextPreview.success) {
+        setDiagnostics((current) => [nextPreview.message, ...current].slice(0, 5));
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not build cut previews.");
     } finally {
@@ -1182,7 +1527,7 @@ function ShortsArchitectPage() {
   }
 
   async function renderAiPlan() {
-    if (!result || !aiShorts.length || hasInvalidCuts || rendering) return;
+    if (!result || !aiShorts.length || hasInvalidCuts || duetMissingBroll || rendering) return;
     setRendering(true);
     setStatus("Rendering the AI-selected Shorts into local MP4 exports...");
     try {
@@ -1195,6 +1540,9 @@ function ShortsArchitectPage() {
       });
       setRenderResult(nextRender);
       setStatus(nextRender.message);
+      if (!nextRender.success) {
+        setDiagnostics((current) => [nextRender.message, ...current].slice(0, 5));
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Shorts render failed.");
     } finally {
@@ -1206,6 +1554,13 @@ function ShortsArchitectPage() {
     <section className="page-stack">
       <SectionHeader title="Shorts Architect" copy="Upload the full performance. A.R.I.A. listens, finds moments, writes captions, and chooses the cuts." />
       {status ? <div className="status">{status}</div> : null}
+      {diagnostics.length ? (
+        <Panel title="Shorts Diagnostics">
+          <div className="caption-lines">
+            {diagnostics.map((item, index) => <p key={`${item}-${index}`}>{item}</p>)}
+          </div>
+        </Panel>
+      ) : null}
       <div className="shorts-shell">
         <Panel title="AI Director">
           <div className="form-grid">
@@ -1272,7 +1627,7 @@ function ShortsArchitectPage() {
             <button className="primary" disabled={!mainVideo || analyzing} onClick={runAiDirector}>
               {analyzing ? "A.R.I.A. Is Directing..." : "Let A.R.I.A. Create The Shorts"}
             </button>
-            <button disabled={!aiShorts.length || hasInvalidCuts || rendering || analyzing} onClick={renderAiPlan}>
+            <button disabled={!aiShorts.length || hasInvalidCuts || duetMissingBroll || rendering || analyzing} onClick={renderAiPlan}>
               {rendering ? "Rendering MP4s..." : "Render AI Plan"}
             </button>
           </div>
@@ -1289,7 +1644,7 @@ function ShortsArchitectPage() {
       </div>
       <Panel title="AI-Selected Cuts">
         <div className="clip-editor-topline">
-          <span>{hasInvalidCuts ? "Fix cut timing before render" : aiShorts.length ? `${aiShorts.length} editable cut(s)` : "No cuts selected yet"}</span>
+          <span>{hasInvalidCuts ? "Fix cut timing before render" : duetMissingBroll ? "Duet Mode needs B-Roll before render" : aiShorts.length ? `${aiShorts.length} editable cut(s)` : "No cuts selected yet"}</span>
           <div className="button-row">
             <button disabled={!result?.main_video_path || !aiShorts.length || hasInvalidCuts || previewing} onClick={() => refreshCutPreviews()}>
               {previewing ? "Building Previews..." : "Refresh Previews"}
@@ -1357,7 +1712,7 @@ function ShortsArchitectPage() {
             <InfoRow label="Layout" value={layout} />
             <InfoRow label="Export" value="MoviePy + FFmpeg" />
             <InfoRow label="Output" value={renderResult?.outputs.length ? `${renderResult.outputs.length} file(s) in shorts_output/` : "shorts_output/"} />
-            <InfoRow label="Next Build" value="Editable cut review before render" />
+            <InfoRow label="Render Readiness" value={duetMissingBroll ? "Needs B-Roll for Duet Mode" : hasInvalidCuts ? "Fix cut timing" : aiShorts.length ? "Ready after review" : "Run AI Director first"} />
           </div>
         </Panel>
       </div>
@@ -1388,7 +1743,7 @@ function ShortsArchitectPage() {
 function WorkspacePage({ title, mode }: { title: string; data: BootstrapPayload; mode: string }) {
   return (
     <section className="page-stack">
-      <SectionHeader title={title} copy="This workspace is ready for the next migration pass from Streamlit into React." />
+      <SectionHeader title={title} copy="This workspace is ready for the next React polish pass." />
       <Panel title="Migration Slot">
         <p>{mode} will keep using the existing Python engine while the UI becomes editable React components.</p>
       </Panel>

@@ -190,7 +190,14 @@ def transcribe_segments(video_path: Path, segments: list[dict[str, float]], mode
 def analyze_video_pipeline(video_path: Path, whisper_model: str = "small") -> tuple[list[dict[str, float]], pd.DataFrame]:
     audio_path = extract_audio_from_video(video_path)
     segments = detect_high_energy_segments(audio_path)
-    transcription_df = transcribe_segments(video_path, segments, model_size=whisper_model)
+    try:
+        transcription_df = transcribe_segments(video_path, segments, model_size=whisper_model)
+    except Exception as error:
+        transcription_df = pd.DataFrame(columns=["segment_id", "start_time", "end_time", "text", "words_json"])
+        transcription_df.attrs["warning"] = (
+            "Transcription was skipped because Faster Whisper could not complete. "
+            f"A.R.I.A. will still build cuts from audio energy. Details: {error}"
+        )
     return segments, transcription_df
 
 

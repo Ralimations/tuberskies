@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import textwrap
-
 import streamlit as st
 
 from aria_app.ai import build_coach_prompt, stream_ollama_response
@@ -48,38 +46,6 @@ def _render_concept_builder() -> tuple[str, str, str, str]:
     return topic, working_title, model, selected_action
 
 
-def _render_request_signals(topic: str, working_title: str, model: str) -> None:
-    render_panel_header("Request Signals", "Paste fan requests or comments, then turn demand into a Ralskies angle.")
-    fan_request = st.text_area("Ko-fi / Fanskies request dropbox", placeholder="Paste song requests here...", height=95, key="niche_request")
-    comment_dump = st.text_area(
-        "Comments / request extraction inbox",
-        placeholder="Paste YouTube comments here and A.R.I.A. will spot recurring songs or audience signals...",
-        height=125,
-        key="niche_comments",
-    )
-
-    col1, col2 = st.columns(2)
-    if col1.button("Fan Request Spin", use_container_width=True):
-        request_topic = fan_request if fan_request.strip() else topic
-        _run_generation(build_coach_prompt(request_topic, working_title, "fan_request_spin"), model, "Ralskies Spin")
-
-    if col2.button("Extract Requests", use_container_width=True):
-        extraction_prompt = textwrap.dedent(
-            f"""
-            Review the pasted YouTube comments for Ralskies and extract likely fan song requests.
-            Return:
-            1. A deduplicated list of requested songs or artists
-            2. The most repeated request themes
-            3. Which request seems strongest for retention potential
-            4. One suggested 'Ralskies spin' for the top request
-
-            Comments:
-            {comment_dump}
-            """
-        ).strip()
-        _run_generation(extraction_prompt, model, "Comment Request Extraction")
-
-
 def _render_keyword_desk(topic: str, working_title: str) -> None:
     render_panel_header("Keyword + Packaging Desk", "Score the current title and surface lightweight keyword opportunities from the concept.")
     keyword_df = build_keyword_opportunity_df(topic, working_title, st.session_state.calendar_df)
@@ -117,9 +83,5 @@ def render_niche_lab() -> None:
     render_section_header("Ideation", "Niche Lab", "Develop covers, originals, and fan-requested songs into stronger theatrical concepts with A.R.I.A.")
 
     topic, working_title, model, _ = _render_concept_builder()
-    left, right = st.columns([1.02, 0.98])
-    with left:
-        _render_request_signals(topic, working_title, model)
-    with right:
-        _render_keyword_desk(topic, working_title)
+    _render_keyword_desk(topic, working_title)
     _render_output_desk()

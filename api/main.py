@@ -40,10 +40,10 @@ from storage import (
     save_calendar,
     save_shorts_project,
     save_vault_settings,
+    database_status,
 )
 from youtube_cache import (
     cached_channel_profile,
-    cached_comment_threads,
     cached_live_analytics,
     cached_owned_video_metadata,
     cached_video_performance,
@@ -54,7 +54,6 @@ from youtube_client import (
     clear_youtube_token,
     get_connection_status,
     has_saved_token,
-    reply_to_comment,
     update_owned_video_metadata,
 )
 
@@ -82,7 +81,7 @@ SIDEBAR_ITEMS = [
     {"label": "Analytics", "path": "/analytics", "icon": "chart", "group": "Home"},
     {"label": "Creator Actions", "path": "/creator-actions", "icon": "reply", "group": "Home"},
     {"label": "Upload Lab", "path": "/upload-lab", "icon": "upload", "group": "More tools"},
-    {"label": "Pattern Memory", "path": "/pattern-memory", "icon": "memory", "group": "More tools"},
+    {"label": "A.R.I.A. Memory", "path": "/pattern-memory", "icon": "memory", "group": "More tools"},
     {"label": "Ideation", "path": "/ideation", "icon": "spark", "group": "More tools"},
     {"label": "Repertoire", "path": "/repertoire", "icon": "music", "group": "More tools"},
     {"label": "Shorts Architect", "path": "/shorts", "icon": "scissors", "group": "More tools"},
@@ -95,7 +94,6 @@ CACHE_DATASETS = {
     "youtube:video_performance:365:100": "Upload Performance",
     "youtube:music_trends:": "Music Trends",
     "youtube:video_metadata:": "Video Metadata",
-    "youtube:comment_threads:": "Comments",
 }
 
 
@@ -114,7 +112,6 @@ class IdeationRequest(BaseModel):
     working_title: str = ""
     action: str = "title_pack"
     fan_request: str = ""
-    comment_dump: str = ""
 
 
 class VaultSettingsRequest(BaseModel):
@@ -149,6 +146,11 @@ class MetadataDraftRequest(BaseModel):
     current_title: str = ""
 
 
+class UploadTipsRequest(BaseModel):
+    upload: dict[str, Any]
+    upload_kind: str = "Full Length"
+
+
 class MetadataLoadRequest(BaseModel):
     video_id: str
 
@@ -158,21 +160,6 @@ class MetadataPublishRequest(BaseModel):
     title: str
     description: str
     tags: list[str]
-    reviewed: bool = False
-
-
-class CommentListRequest(BaseModel):
-    video_id: str = ""
-
-
-class CommentDraftRequest(BaseModel):
-    author: str
-    text: str
-
-
-class CommentPublishRequest(BaseModel):
-    comment_id: str
-    reply_text: str
     reviewed: bool = False
 
 
@@ -361,19 +348,6 @@ def _build_react_action_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
-    if video_df is not None and not video_df.empty and "comment_count" in video_df.columns:
-        comment_total = int(video_df["comment_count"].fillna(0).sum())
-        if comment_total > 0:
-            cards.append(
-                {
-                    "category": "Community",
-                    "title": "Reply to recent comments safely",
-                    "body": f"The loaded upload window has {comment_total:,} comments. Draft warm replies, then post one at a time.",
-                    "cta": "Open Creator Actions",
-                    "path": "/creator-actions",
-                }
-            )
-
     if calendar_df is not None and not calendar_df.empty:
         active = calendar_df[calendar_df["stage"].isin(["Upload", "Video Editing", "BandLab Recording"])]
         if not active.empty:
@@ -508,6 +482,13 @@ def _metadata_action_rows(video_df: pd.DataFrame | None) -> list[dict[str, Any]]
             reasons.append("weaker retention")
         if not reasons:
             reasons.append("lowest optimization score")
+        suggestion = "Refresh title promise, description opening, and focused tags."
+        if "weaker retention" in reasons and "lower views" in reasons:
+            suggestion = "Reframe the title hook, tighten the first description line, and add searchable story tags."
+        elif "weaker retention" in reasons:
+            suggestion = "Check title promise against viewer retention and make the description set expectations faster."
+        elif "lower views" in reasons:
+            suggestion = "Improve discoverability with a clearer title angle and stronger keyword tags."
         rows.append(
             {
                 "video_id": str(row.get("video_id", "")),
@@ -518,6 +499,7 @@ def _metadata_action_rows(video_df: pd.DataFrame | None) -> list[dict[str, Any]]
                 "watch_time_hours": round(float(row.get("watch_time_hours", 0)), 1),
                 "engagement_score": round(float(row.get("engagement_score", 0)), 1),
                 "reason": ", ".join(reasons),
+                "suggestion": suggestion,
             }
         )
     return rows
@@ -686,6 +668,69 @@ def _fallback_ai_shorts_plan(segments: list[dict[str, float]], transcript_df: pd
     return {"video_title": source_name, "shorts": shorts, "posting_notes": ["AI fallback used because the local model did not return valid JSON."]}
 
 
+def _normalize_ai_shorts_plan(plan: dict[str, Any] | None, segments: list[dict[str, float]], transcript_df: pd.DataFrame, source_name: str, objective: str) -> dict[str, Any]:
+    if not isinstance(plan, dict):
+        plan = _fallback_ai_shorts_plan(segments, transcript_df, source_name, objective)
+
+    raw_shorts = plan.get("shorts")
+    if not isinstance(raw_shorts, list) or not raw_shorts:
+        plan = _fallback_ai_shorts_plan(segments, transcript_df, source_name, objective)
+        raw_shorts = plan.get("shorts", [])
+
+    normalized: list[dict[str, Any]] = []
+    for index, item in enumerate(raw_shorts[:8], start=1):
+        if not isinstance(item, dict):
+            continue
+        segment = segments[min(index - 1, len(segments) - 1)] if segments else {"start": 0.0, "end": 35.0}
+        start = float(item.get("start", segment.get("start", 0.0)) or 0.0)
+        end = float(item.get("end", segment.get("end", start + 35.0)) or start + 35.0)
+        start = max(0.0, round(start, 2))
+        end = round(max(start + 3.0, end), 2)
+        raw_lines = item.get("caption_lines")
+        caption_lines = [str(line).strip() for line in raw_lines if str(line).strip()] if isinstance(raw_lines, list) else []
+        hook = str(item.get("hook") or "").strip()
+        if not caption_lines and hook:
+            caption_lines = [hook]
+        normalized.append(
+            {
+                "segment_id": int(item.get("segment_id") or index),
+                "start": start,
+                "end": end,
+                "title": str(item.get("title") or f"{source_name[:60]} Short {index}").strip(),
+                "hook": hook or "Wait for this vocal moment",
+                "caption_lines": caption_lines or ["Wait for this moment"],
+                "reason": str(item.get("reason") or "Chosen from the strongest detected music moment.").strip(),
+                "score": float(item.get("score") or 70),
+            }
+        )
+
+    if not normalized:
+        return _fallback_ai_shorts_plan(segments, transcript_df, source_name, objective)
+
+    posting_notes = plan.get("posting_notes")
+    return {
+        "video_title": str(plan.get("video_title") or source_name).strip(),
+        "shorts": normalized,
+        "posting_notes": [str(note).strip() for note in posting_notes if str(note).strip()] if isinstance(posting_notes, list) else [],
+    }
+
+
+def _shorts_error_message(error: Exception, stage: str) -> str:
+    text = str(error)
+    lower = text.lower()
+    if isinstance(error, ModuleNotFoundError):
+        return f"{stage} could not start because a Python package is missing: {error.name}. Run pip install -r requirements.txt, then try again."
+    if "ffmpeg" in lower or "ffprobe" in lower:
+        return f"{stage} needs FFmpeg available on PATH. Install FFmpeg, restart the terminal, then rerun A.R.I.A. Studio."
+    if "imagemagick" in lower or "textclip" in lower or "convert-im6" in lower:
+        return f"{stage} reached caption rendering, but MoviePy could not create text clips. Install ImageMagick or switch MoviePy text support on this machine, then render again."
+    if "no audio" in lower:
+        return f"{stage} needs a full performance video with an audio track. Upload a video file that includes the music."
+    if "model" in lower and ("whisper" in lower or "download" in lower):
+        return f"{stage} could not load the selected Whisper model. Try the tiny or base model first, or use the future model-download setting once we add it."
+    return f"{stage} failed: {text}"
+
+
 def _chat_context(payload: dict[str, Any]) -> str:
     analytics_df = payload["analytics_df"]
     video_df = payload["video_df"]
@@ -698,8 +743,18 @@ def _chat_context(payload: dict[str, Any]) -> str:
     last_30 = analytics_df.tail(30) if analytics_df is not None else pd.DataFrame()
     views_30 = int(last_30["views"].fillna(0).sum()) if not last_30.empty and "views" in last_30 else 0
     watch_hours_30 = float(last_30["watch_time_hours"].fillna(0).sum()) if not last_30.empty and "watch_time_hours" in last_30 else 0
+    uploads_count = int(len(video_df)) if video_df is not None else 0
+    analytics_count = int(len(analytics_df)) if analytics_df is not None else 0
+    calendar_count = int(len(calendar_df)) if calendar_df is not None else 0
     best = upload_takeaways.get("best")
     weak = upload_takeaways.get("weak")
+    shorts_projects = list_shorts_projects()
+    latest_shorts_project = shorts_projects[0] if shorts_projects else None
+    shorts_context = (
+        f"{len(shorts_projects)} saved Shorts project(s). Latest: {latest_shorts_project.get('title', 'Untitled')} updated {latest_shorts_project.get('updated_at', '')}."
+        if latest_shorts_project
+        else "No saved Shorts analysis projects yet. Shorts Architect can analyze uploaded performances, create AI cut plans, preview frames, and render MP4s after a video is uploaded."
+    )
 
     return textwrap.dedent(
         f"""
@@ -709,18 +764,22 @@ def _chat_context(payload: dict[str, Any]) -> str:
         {freshness_context}
         - Last 30 days views: {views_30:,}
         - Last 30 days watch time hours: {watch_hours_30:.1f}
+        - Stored analytics rows available: {analytics_count}
+        - Stored upload rows available: {uploads_count}
+        - Stored repertoire rows available: {calendar_count}
         - Today focus: {today_payload.get("focus_title", "unknown")}
         - Today risk: {today_payload.get("risk_title", "unknown")} | {today_payload.get("risk_reason", "")}
         - Today opportunity: {today_payload.get("opportunity_title", "unknown")} | {today_payload.get("opportunity_reason", "")}
         - Best upload: {best.to_dict() if hasattr(best, "to_dict") else best}
         - Weakest upload: {weak.to_dict() if hasattr(weak, "to_dict") else weak}
+        - Shorts Architect: {shorts_context}
         - Pattern memory snapshot: {pattern_snapshot or {}}
 
         Recent daily analytics:
         {_preview_frame(analytics_df.tail(14), ["date", "views", "ctr", "retention", "watch_time_hours", "subscribers_gained"], 14)}
 
         Top uploads:
-        {_preview_frame(video_df, ["title", "views", "retention", "watch_time_hours", "subscribers_gained", "comment_count", "engagement_score"], 8)}
+        {_preview_frame(video_df, ["title", "views", "retention", "watch_time_hours", "subscribers_gained", "engagement_score"], 8)}
 
         Repertoire:
         {_preview_frame(calendar_df, ["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"], 10)}
@@ -734,8 +793,11 @@ def _build_chat_prompt(message: str, history: list[ChatMessage], context: str) -
         f"""
         You are A.R.I.A. answering as if the creator is chatting directly with their analytics.
         Be concrete, brief, and action-oriented. If data is demo, cached, missing, or uncertain, say so plainly.
+        The Analytics context below is your current stored database/cache context. Use it for any custom user wording, not only suggested prompt text.
+        Do not say "I do not have specific data in the current context" when the relevant stored rows or summaries are shown below. Instead, answer from the available rows and name any limits.
         If the creator is only greeting you, testing the chat, thanking you, or making small talk, respond naturally in one short sentence and do not give analytics recommendations yet.
-        Only give analytics recommendations when the creator asks for advice, analysis, decisions, risks, patterns, uploads, Shorts, metadata, comments, or next actions.
+        Only give analytics recommendations when the creator asks for advice, analysis, decisions, risks, patterns, uploads, Shorts, metadata, or next actions.
+        If the creator asks about Shorts and there are no saved Shorts projects yet, explain what Shorts Architect can do and suggest the next upload/analyze step instead of saying there is no Shorts data.
 
         Analytics context:
         {context}
@@ -747,6 +809,47 @@ def _build_chat_prompt(message: str, history: list[ChatMessage], context: str) -
         {message}
         """
     ).strip()
+
+
+def _direct_chat_response(message: str, payload: dict[str, Any]) -> str | None:
+    lowered = message.lower()
+    if "short" not in lowered:
+        return None
+
+    projects = list_shorts_projects()
+    video_df = payload["video_df"]
+    if projects:
+        latest = projects[0]
+        return (
+            f"You have {len(projects)} saved Shorts Architect project(s). "
+            f"The latest is {latest.get('title', 'Untitled')}. Open Shorts Architect to preview, edit, or render the saved AI cut plan."
+        )
+
+    if video_df is None or video_df.empty:
+        return (
+            "No saved Shorts projects or upload rows are available yet. "
+            "Next step: upload a full video in Shorts Architect, let A.R.I.A. analyze the music and frames, then generate the cut plan."
+        )
+
+    candidates = video_df.copy()
+    if "engagement_score" in candidates.columns:
+        candidates["_rank"] = pd.to_numeric(candidates["engagement_score"], errors="coerce").fillna(0)
+    elif "views" in candidates.columns:
+        candidates["_rank"] = pd.to_numeric(candidates["views"], errors="coerce").fillna(0)
+    else:
+        candidates["_rank"] = 0
+    top_rows = candidates.sort_values("_rank", ascending=False).head(3)
+    lines = []
+    for index, row in enumerate(top_rows.to_dict(orient="records"), start=1):
+        title = str(row.get("title") or "Untitled upload")
+        views = row.get("views", "unknown views")
+        retention = row.get("retention", "unknown retention")
+        lines.append(f"{index}. {title} | views: {views} | retention: {retention}")
+    return (
+        "No saved Shorts Architect projects yet, but the stored upload data gives us candidates to test first:\n"
+        + "\n".join(lines)
+        + "\nNext step: upload the strongest full performance in Shorts Architect and let A.R.I.A. pick cuts, titles, captions, and renderable clips."
+    )
 
 
 def _small_talk_response(message: str) -> str | None:
@@ -801,8 +904,8 @@ def _stream_assistant_response(prompt: str, model: str):
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    return {"status": "ok", "database": database_status()}
 
 
 @app.get("/api/bootstrap")
@@ -845,6 +948,9 @@ def chat(request: ChatRequest) -> dict[str, str]:
     if small_talk:
         return {"role": "assistant", "content": small_talk}
     payload = _load_context()
+    direct_response = _direct_chat_response(request.message, payload)
+    if direct_response:
+        return {"role": "assistant", "content": direct_response}
     prompt = _build_chat_prompt(request.message, request.history, _chat_context(payload))
     model = payload["settings"].get("ollama_model", "gemma")
     response = _assistant_response(prompt, model)
@@ -859,6 +965,9 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
     if small_talk:
         return StreamingResponse(iter([small_talk]), media_type="text/plain")
     payload = _load_context()
+    direct_response = _direct_chat_response(request.message, payload)
+    if direct_response:
+        return StreamingResponse(iter([direct_response]), media_type="text/plain")
     prompt = _build_chat_prompt(request.message, request.history, _chat_context(payload))
     model = payload["settings"].get("ollama_model", "gemma")
     return StreamingResponse(_stream_assistant_response(prompt, model), media_type="text/plain")
@@ -868,21 +977,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
 def generate_ideation(request: IdeationRequest) -> dict[str, str]:
     payload = _load_context()
     action = request.action
-    if action == "extract_requests":
-        prompt = textwrap.dedent(
-            f"""
-            Review the pasted YouTube comments for Ralskies and extract likely fan song requests.
-            Return:
-            1. A deduplicated list of requested songs or artists
-            2. The most repeated request themes
-            3. Which request seems strongest for retention potential
-            4. One suggested 'Ralskies spin' for the top request
-
-            Comments:
-            {request.comment_dump}
-            """
-        ).strip()
-    elif action == "fan_request_spin":
+    if action == "fan_request_spin":
         prompt = build_coach_prompt(request.fan_request or request.topic, request.working_title, "fan_request_spin")
     else:
         prompt = build_coach_prompt(request.topic, request.working_title, action)
@@ -892,9 +987,13 @@ def generate_ideation(request: IdeationRequest) -> dict[str, str]:
 
 @app.post("/api/ideation/score")
 def score_ideation(request: IdeationRequest) -> dict[str, Any]:
-    calendar_df = load_calendar()
-    keywords = build_keyword_opportunity_df(request.topic, request.working_title, calendar_df)
-    scorecard = build_title_scorecard(request.working_title, request.topic)
+    try:
+        calendar_df = load_calendar()
+        keywords = build_keyword_opportunity_df(request.topic, request.working_title, calendar_df)
+        scorecard = build_title_scorecard(request.working_title, request.topic)
+    except Exception as error:
+        keywords = pd.DataFrame(columns=["keyword", "demand", "competition", "channel_fit", "score"])
+        scorecard = [("Packaging Score", "Unavailable"), ("Scoring Status", f"Keyword scoring failed: {error}")]
     return _json_safe(
         {
             "keywords": keywords,
@@ -935,6 +1034,26 @@ def analytics() -> dict[str, Any]:
             "messages": payload["messages"],
         }
     )
+
+
+@app.post("/api/upload-lab/tips")
+def draft_upload_lab_tips(request: UploadTipsRequest) -> dict[str, str]:
+    settings = load_vault_settings()
+    prompt = textwrap.dedent(
+        f"""
+        Give concise optimization tips for this Ralskies upload.
+        Return:
+        1. What to keep
+        2. What to change in title/thumbnail promise/description
+        3. One next upload lesson
+
+        Upload type: {request.upload_kind}
+        Upload metrics:
+        {json.dumps(request.upload, indent=2, ensure_ascii=False)}
+        """
+    ).strip()
+    response = _assistant_response(prompt, settings.get("ollama_model", "gemma"))
+    return {"content": response or "A.R.I.A. could not draft upload tips right now."}
 
 
 @app.get("/api/vault")
@@ -1081,9 +1200,11 @@ def draft_metadata(request: MetadataDraftRequest) -> dict[str, str]:
         f"""
         Draft safer YouTube metadata improvements for this Ralskies video.
         Return a concise result with:
-        1. A refined description opening
-        2. A comma-separated tag list under 450 total characters
-        3. One caution if the current title should not be changed
+        1. Suggested title option if the current title should change
+        2. A refined description opening
+        3. A comma-separated tag list under 450 total characters
+        4. Why this fix should help this low-performing upload
+        5. One caution if the current title should not be changed
 
         Current video: {request.video_label}
         Why this was prioritized: {request.reason or "This upload was selected for metadata optimization."}
@@ -1124,39 +1245,6 @@ def publish_metadata(request: MetadataPublishRequest) -> dict[str, Any]:
     return {"success": success, "message": message}
 
 
-@app.post("/api/creator-actions/comments/list")
-def list_comments(request: CommentListRequest) -> dict[str, Any]:
-    rows, message = cached_comment_threads(load_vault_settings(), video_id=request.video_id, max_results=20)
-    return _json_safe({"rows": rows, "message": message})
-
-
-@app.post("/api/creator-actions/comments/draft")
-def draft_comment(request: CommentDraftRequest) -> dict[str, str]:
-    settings = load_vault_settings()
-    prompt = textwrap.dedent(
-        f"""
-        Draft one warm, natural YouTube reply from Ralskies.
-        Keep it specific, non-spammy, and under 300 characters.
-        Do not overpromise. Do not use repeated promotional language.
-
-        Comment author: {request.author}
-        Comment: {request.text}
-        """
-    ).strip()
-    response = _assistant_response(prompt, settings.get("ollama_model", "gemma"))
-    return {"content": response or "A.R.I.A. could not draft a reply right now."}
-
-
-@app.post("/api/creator-actions/comments/publish")
-def publish_comment(request: CommentPublishRequest) -> dict[str, Any]:
-    if not request.reviewed:
-        return {"success": False, "message": "Review confirmation is required before posting."}
-    success, message = reply_to_comment(load_vault_settings(), request.comment_id, request.reply_text)
-    if success:
-        _log_action("comment_reply", {"comment_id": request.comment_id})
-    return {"success": success, "message": message}
-
-
 @app.post("/api/shorts/ai-analyze")
 def analyze_shorts_with_ai(
     main_video: UploadFile = File(...),
@@ -1166,54 +1254,81 @@ def analyze_shorts_with_ai(
     objective: str = Form("Retention hook"),
     vision_model: str = Form(""),
 ) -> dict[str, Any]:
-    settings = load_vault_settings()
-    active_vision_model = vision_model.strip() or settings.get("ollama_vision_model", "").strip()
-    main_path = save_uploaded_bytes(main_video.filename or "main_video.mp4", main_video.file.read(), "main_video")
-    broll_path = (
-        save_uploaded_bytes(broll_video.filename or "broll_video.mp4", broll_video.file.read(), "broll_video")
-        if broll_video is not None
-        else None
-    )
-    segments, transcript_df = analyze_video_pipeline(main_path, whisper_model=whisper_model)
-    frame_paths = sample_video_frames(main_path, frame_count=6)
-    visual_notes = _frame_visual_notes(frame_paths, active_vision_model)
-    prompt = _build_ai_shorts_prompt(
-        segments=segments,
-        transcript_df=transcript_df,
-        source_name=main_video.filename or main_path.name,
-        layout_mode=layout_mode,
-        objective=objective,
-        visual_notes=visual_notes,
-    )
-    model = settings.get("ollama_model", "gemma")
-    raw_response = _assistant_response(prompt, model)
-    ai_plan = _extract_json_object(raw_response) or _fallback_ai_shorts_plan(
-        segments,
-        transcript_df,
-        main_video.filename or main_path.stem,
-        objective,
-    )
-    _log_action(
-        "shorts_ai_analysis",
-        {
-            "main_video": str(main_path),
-            "broll_video": str(broll_path) if broll_path else "",
-            "segment_count": len(segments),
-            "transcript_rows": len(transcript_df),
-            "vision_model": active_vision_model,
-        },
-    )
-    return _json_safe(
-        {
-            "main_video_path": str(main_path),
-            "broll_video_path": str(broll_path) if broll_path else "",
-            "segments": segments,
-            "transcriptRows": transcript_df,
-            "visualNotes": visual_notes,
-            "aiPlan": ai_plan,
-            "rawModelResponse": raw_response,
-        }
-    )
+    warnings: list[str] = []
+    empty_response = {
+        "success": False,
+        "message": "Shorts AI analysis did not complete.",
+        "warnings": warnings,
+        "main_video_path": "",
+        "broll_video_path": "",
+        "segments": [],
+        "transcriptRows": [],
+        "visualNotes": "",
+        "aiPlan": {"shorts": [], "posting_notes": []},
+        "rawModelResponse": "",
+    }
+    try:
+        settings = load_vault_settings()
+        active_vision_model = vision_model.strip() or settings.get("ollama_vision_model", "").strip()
+        main_path = save_uploaded_bytes(main_video.filename or "main_video.mp4", main_video.file.read(), "main_video")
+        broll_path = (
+            save_uploaded_bytes(broll_video.filename or "broll_video.mp4", broll_video.file.read(), "broll_video")
+            if broll_video is not None
+            else None
+        )
+        segments, transcript_df = analyze_video_pipeline(main_path, whisper_model=whisper_model)
+        if transcript_df.attrs.get("warning"):
+            warnings.append(str(transcript_df.attrs["warning"]))
+        try:
+            frame_paths = sample_video_frames(main_path, frame_count=6)
+        except Exception as error:
+            frame_paths = []
+            warnings.append(_shorts_error_message(error, "Visual frame sampling"))
+        visual_notes = _frame_visual_notes(frame_paths, active_vision_model)
+        if visual_notes.startswith("Visual pass skipped:"):
+            warnings.append(visual_notes)
+        prompt = _build_ai_shorts_prompt(
+            segments=segments,
+            transcript_df=transcript_df,
+            source_name=main_video.filename or main_path.name,
+            layout_mode=layout_mode,
+            objective=objective,
+            visual_notes=visual_notes,
+        )
+        model = settings.get("ollama_model", "gemma")
+        raw_response = _assistant_response(prompt, model)
+        parsed_plan = _extract_json_object(raw_response)
+        if parsed_plan is None:
+            warnings.append("The local text model did not return valid JSON, so A.R.I.A. used a fallback cut plan.")
+        ai_plan = _normalize_ai_shorts_plan(parsed_plan, segments, transcript_df, main_video.filename or main_path.stem, objective)
+        _log_action(
+            "shorts_ai_analysis",
+            {
+                "main_video": str(main_path),
+                "broll_video": str(broll_path) if broll_path else "",
+                "segment_count": len(segments),
+                "transcript_rows": len(transcript_df),
+                "vision_model": active_vision_model,
+                "warning_count": len(warnings),
+            },
+        )
+        return _json_safe(
+            {
+                "success": True,
+                "message": f"AI plan ready: {len(ai_plan.get('shorts', []))} cut(s) selected.",
+                "warnings": warnings,
+                "main_video_path": str(main_path),
+                "broll_video_path": str(broll_path) if broll_path else "",
+                "segments": segments,
+                "transcriptRows": transcript_df,
+                "visualNotes": visual_notes,
+                "aiPlan": ai_plan,
+                "rawModelResponse": raw_response,
+            }
+        )
+    except Exception as error:
+        empty_response["message"] = _shorts_error_message(error, "Shorts AI analysis")
+        return _json_safe(empty_response)
 
 
 @app.post("/api/shorts/render")
@@ -1223,6 +1338,10 @@ def render_shorts_from_ai_plan(request: ShortsRenderRequest) -> dict[str, Any]:
         broll_path = _resolve_shorts_path(request.broll_video_path, allow_empty=True)
         if main_path is None:
             return {"success": False, "message": "A main video path is required.", "outputs": []}
+        if request.layout_mode == "Duet Mode" and broll_path is None:
+            return {"success": False, "message": "Duet Mode needs a B-Roll / Reference video. Switch to Solo Mode or upload B-Roll before rendering.", "outputs": []}
+        if not request.shorts:
+            return {"success": False, "message": "No cut plan was provided. Run AI Director or restore the AI plan before rendering.", "outputs": []}
         outputs = render_ai_shorts(
             main_video_path=main_path,
             broll_video_path=broll_path,
@@ -1231,8 +1350,10 @@ def render_shorts_from_ai_plan(request: ShortsRenderRequest) -> dict[str, Any]:
             text_color=request.text_color,
             add_outline=request.add_outline,
         )
+        if not outputs:
+            return {"success": False, "message": "No Shorts were rendered. Check that every cut has a valid start/end time inside the source video.", "outputs": []}
     except Exception as error:
-        return {"success": False, "message": str(error), "outputs": []}
+        return {"success": False, "message": _shorts_error_message(error, "Shorts render"), "outputs": []}
 
     _log_action(
         "shorts_ai_render",
@@ -1255,9 +1376,13 @@ def preview_shorts_from_ai_plan(request: ShortsPreviewRequest) -> dict[str, Any]
         main_path = _resolve_shorts_path(request.main_video_path)
         if main_path is None:
             return {"success": False, "message": "A main video path is required.", "frames": []}
+        if not request.shorts:
+            return {"success": False, "message": "No cut plan was provided. Run AI Director or restore the AI plan before previewing.", "frames": []}
         previews = preview_shorts_frames(main_path, [clip.dict() for clip in request.shorts])
+        if not previews:
+            return {"success": False, "message": "No preview frames were created. Check that every cut has a valid start/end time inside the source video.", "frames": []}
     except Exception as error:
-        return {"success": False, "message": str(error), "frames": []}
+        return {"success": False, "message": _shorts_error_message(error, "Shorts preview"), "frames": []}
 
     frames = []
     for preview in previews:

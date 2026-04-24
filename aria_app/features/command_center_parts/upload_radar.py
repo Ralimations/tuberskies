@@ -9,7 +9,6 @@ from aria_app.ai import stream_ollama_response
 from aria_app.ui import render_editorial_list, render_insight_card, render_panel_header
 from aria_app.features.command_center_parts.upload_metrics import (
     build_gap_rows,
-    build_request_signal_rows,
 )
 
 def build_next_cover_radar(
@@ -21,7 +20,6 @@ def build_next_cover_radar(
     niche_output: str,
 ) -> list[dict[str, object]]:
     radar_rows: list[dict[str, object]] = []
-    request_rows = build_request_signal_rows(niche_output)
     gap_rows = build_gap_rows(monthly_df, global_franchises)
 
     hottest_franchise = monthly_franchises[0]["franchise"] if monthly_franchises else (global_franchises[0]["franchise"] if global_franchises else "General / Mixed")
@@ -66,19 +64,6 @@ def build_next_cover_radar(
             }
         )
 
-    if request_rows:
-        top_request = request_rows[0]
-        radar_rows.append(
-            {
-                "lane": "Fan Signal Play",
-                "franchise": top_request["signal"],
-                "format": "Produced Cover",
-                "confidence": "Medium",
-                "idea": franchise_idea_map.get(top_request["signal"], "a fan-requested performance idea"),
-                "why": f"Request memory currently points to {top_request['signal']} with {top_request['mentions']} detected mentions.",
-            }
-        )
-
     if trend_titles:
         preferred_title = trend_titles[0]
         preferred_keywords = franchise_match_map.get(hottest_franchise, [])
@@ -117,7 +102,7 @@ def render_next_cover_radar(
 ) -> None:
     render_panel_header(
         "Next Cover Radar",
-        "A.R.I.A.'s recommendation layer. It combines franchise heat, format strength, recent upload gaps, niche trends, and fan-request signals into concrete next-move options.",
+        "A.R.I.A.'s recommendation layer. It combines franchise heat, format strength, recent upload gaps, and niche trends into concrete next-move options.",
     )
 
     radar_rows = build_next_cover_radar(
@@ -128,7 +113,6 @@ def render_next_cover_radar(
         trend_df=trend_df,
         niche_output=st.session_state.niche_output,
     )
-    request_rows = build_request_signal_rows(st.session_state.niche_output)
     gap_rows = build_gap_rows(monthly_df, global_franchises)
 
     if not radar_rows:
@@ -150,10 +134,6 @@ def render_next_cover_radar(
         st.dataframe(radar_table, use_container_width=True, hide_index=True)
     with right:
         render_editorial_list(
-            "Fan Request Signals",
-            [(row["signal"], f"{row['mentions']} mention(s)") for row in request_rows] or [("Status", "No fan request signals have been detected yet.")],
-        )
-        render_editorial_list(
             "Opportunity Gaps",
             [(row["franchise"], row["gap_note"]) for row in gap_rows[:4]] or [("Status", "No major franchise gap detected this month.")],
         )
@@ -161,7 +141,6 @@ def render_next_cover_radar(
     if st.button("Ask A.R.I.A. for the Best Next Cover", key="next_cover_radar_coach"):
         model = st.session_state.vault_settings.get("ollama_model", "gemma")
         radar_csv = pd.DataFrame(radar_rows).to_csv(index=False)
-        request_csv = pd.DataFrame(request_rows).to_csv(index=False) if request_rows else "No request signals."
         gap_csv = pd.DataFrame(gap_rows).to_csv(index=False) if gap_rows else "No major gaps."
         trend_csv = trend_df[["query", "title", "channel_title"]].head(8).to_csv(index=False) if trend_df is not None and not trend_df.empty else "No trend videos."
         prompt = textwrap.dedent(
@@ -177,9 +156,6 @@ def render_next_cover_radar(
 
             Radar candidates:
             {radar_csv}
-
-            Fan request signals:
-            {request_csv}
 
             Opportunity gaps:
             {gap_csv}
