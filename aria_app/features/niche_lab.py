@@ -12,7 +12,7 @@ ACTION_LABELS = {
     "hook_pack": "Hook Pack",
     "description_tags": "Description + Tags",
     "content_brief": "Content Brief",
-    "fan_request_spin": "Ralskies Spin",
+    "fan_request_spin": "Niche Spin",
 }
 
 

@@ -81,7 +81,7 @@ def _render_metadata_actions(video_df: pd.DataFrame | None) -> None:
     if draft_col.button("Draft Tags + Description", key="draft_metadata_ai", use_container_width=True):
         prompt = textwrap.dedent(
             f"""
-            Draft safer YouTube metadata improvements for this Ralskies video.
+            Draft safer YouTube metadata improvements for this {st.session_state.vault_settings.get("CHANNEL_NAME", "creator")} video.
             Return a concise result with:
             1. A refined description opening
             2. A comma-separated tag list under 450 total characters

@@ -103,7 +103,7 @@ def render_upload_lab(video_df: pd.DataFrame, upload_message: str) -> None:
                 sample = video_df.head(10)[["title", "views", "retention", "watch_time_hours", "subscribers_gained", "engagement_score"]].to_csv(index=False)
                 prompt = textwrap.dedent(
                     f"""
-                    Review this upload history for Ralskies.
+                    Review this upload history for {st.session_state.vault_settings.get("CHANNEL_NAME", "this channel")}.
                     Keep it practical and concise.
                     Explain:
                     1. What seems to work best

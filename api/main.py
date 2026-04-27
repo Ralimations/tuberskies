@@ -70,7 +70,6 @@ CHAT_SUGGESTIONS = [
     "What should I do next today?",
     "Which upload pattern should I repeat?",
     "What is the biggest risk in my analytics?",
-    "What should I turn into Shorts?",
 ]
 
 SIDEBAR_ITEMS = [
@@ -116,6 +115,11 @@ class VaultSettingsRequest(BaseModel):
     youtube_client_secret: str = ""
     model_name: str = "google/gemma-4-e2b"
     model_endpoint: str = "http://127.0.0.1:3010/v1"
+    active_profile: str = "My Channel (Default)"
+    channel_name: str = "My Channel"
+    niche: str = ""
+    target_audience: str = ""
+    tone: str = ""
 
 
 class CoachRequest(BaseModel):
@@ -403,7 +407,7 @@ def _load_context() -> dict[str, Any]:
     upload_takeaways = build_upload_takeaways(video_df if video_df is not None else pd.DataFrame())
     pattern_memory = refresh_pattern_memory(analytics_df, pd.DataFrame(), "")
     today_payload = build_today_desk_payload(analytics_df, pd.DataFrame(), "")
-    profile = live_profile or {"title": "Ralskies", "handle": "@ralskies"}
+    profile = live_profile or {"title": settings.get("CHANNEL_NAME", "My Channel"), "handle": f"@{settings.get('CHANNEL_NAME', 'My Channel').lower()}"}
     source = "Live YouTube" if live_df is not None else "Demo analytics"
 
     return {
@@ -451,187 +455,9 @@ def _chat_freshness_context(cache_rows: list[dict[str, str]]) -> str:
     return "\n".join(lines) if lines else "No primary YouTube cache rows are available yet."
 
 
-def _frame_visual_notes(frame_paths: list[Path], vision_model: str) -> str:
-    if not frame_paths or not vision_model.strip():
-        return "No visual model was provided, so this run uses audio, transcript, and timing signals only."
-    try:
-        client = _get_client()
-        images = []
-        for path in frame_paths[:6]:
-            b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-            images.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
-        
-        response = client.chat.completions.create(
-            model=vision_model.strip(),
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "These are sampled frames from a high-energy music performance by Ralskies. Analyze the visual intensity, performance energy (vocal/instrumental focus), framing quality, and lighting. Identify specific segments that feel 'Shorts-worthy' due to visual flair, emotional peaks, or unique performance moments."},
-                        *images,
-                    ],
-                }
-            ],
-        )
-        content = str(response.choices[0].message.content or "").strip()
-        return content or "The visual model returned no visual notes."
-    except Exception as error:
-        return f"Visual pass skipped: {error}"
-
-
-def _build_ai_shorts_prompt(
-    segments: list[dict[str, float]],
-    transcript_df: pd.DataFrame,
-    source_name: str,
-    layout_mode: str,
-    objective: str,
-    visual_notes: str,
-) -> str:
-    transcript_preview = _preview_frame(
-        transcript_df,
-        ["segment_id", "start_time", "end_time", "text"],
-        rows=40,
-    )
-    return textwrap.dedent(
-        f"""
-        You are A.R.I.A. acting as an AI Shorts director for Ralskies.
-        You are choosing Shorts from a full music performance using audio-energy windows, transcription, and optional visual notes.
-        Do not ask the creator to manually choose cuts. Pick the cuts yourself.
-
-        Source video: {source_name}
-        Requested layout: {layout_mode}
-        Objective: {objective}
-
-        A.R.I.A. Visual Pass Analysis:
-        {visual_notes}
-
-        Detected high-energy windows (Audio Signals):
-        {json.dumps(segments, indent=2)}
-
-        Transcript rows:
-        {transcript_preview}
-
-        Visual notes:
-        {visual_notes}
-
-        Return only valid JSON with this shape:
-        {{
-          "video_title": "overall source video title idea",
-          "shorts": [
-            {{
-              "segment_id": 1,
-              "start": 0.0,
-              "end": 35.0,
-              "title": "YouTube Shorts title",
-              "hook": "first caption / on-screen hook",
-              "caption_lines": ["short subtitle line", "another subtitle line"],
-              "reason": "why this cut should retain viewers",
-              "score": 88
-            }}
-          ],
-          "posting_notes": ["note about title, pinned comment, or sequencing"]
-        }}
-        Keep captions natural for music. Prefer emotional, theatrical, high-retention hooks. 
-        IMPORTANT: Cross-reference the detected high-energy audio windows with the Visual Pass Analysis. 
-        If the visual analysis highlights specific 'Shorts-worthy' moments, prioritize those segments in your cut plan.
-        """
-    ).strip()
-
-
-def _fallback_ai_shorts_plan(segments: list[dict[str, float]], transcript_df: pd.DataFrame, source_name: str, objective: str) -> dict[str, Any]:
-    shorts: list[dict[str, Any]] = []
-    for index, segment in enumerate(segments[:5], start=1):
-        rows = transcript_df[transcript_df["segment_id"] == index] if "segment_id" in transcript_df.columns else pd.DataFrame()
-        text = " ".join(rows["text"].fillna("").astype(str).head(2).tolist()).strip()
-        shorts.append(
-            {
-                "segment_id": index,
-                "start": segment.get("start", 0),
-                "end": segment.get("end", 0),
-                "title": f"{source_name[:70]} | {objective}",
-                "hook": text[:90] or "Wait for this vocal moment",
-                "caption_lines": [line for line in [text[:80], text[80:160]] if line],
-                "reason": "Chosen from the highest-energy detected music windows.",
-                "score": round(float(segment.get("score", 0)) * 100, 1),
-            }
-        )
-    return {"video_title": source_name, "shorts": shorts, "posting_notes": ["AI fallback used because the local model did not return valid JSON."]}
-
-
-def _normalize_ai_shorts_plan(plan: dict[str, Any] | None, segments: list[dict[str, float]], transcript_df: pd.DataFrame, source_name: str, objective: str) -> dict[str, Any]:
-    if not isinstance(plan, dict):
-        plan = _fallback_ai_shorts_plan(segments, transcript_df, source_name, objective)
-
-    raw_shorts = plan.get("shorts")
-    if not isinstance(raw_shorts, list) or not raw_shorts:
-        plan = _fallback_ai_shorts_plan(segments, transcript_df, source_name, objective)
-        raw_shorts = plan.get("shorts", [])
-
-    normalized: list[dict[str, Any]] = []
-    for index, item in enumerate(raw_shorts[:8], start=1):
-        if not isinstance(item, dict):
-            continue
-        segment = segments[min(index - 1, len(segments) - 1)] if segments else {"start": 0.0, "end": 35.0}
-        start = float(item.get("start", segment.get("start", 0.0)) or 0.0)
-        end = float(item.get("end", segment.get("end", start + 35.0)) or start + 35.0)
-        start = max(0.0, round(start, 2))
-        end = round(max(start + 3.0, end), 2)
-        raw_lines = item.get("caption_lines")
-        caption_lines = [str(line).strip() for line in raw_lines if str(line).strip()] if isinstance(raw_lines, list) else []
-        hook = str(item.get("hook") or "").strip()
-        if not caption_lines and hook:
-            caption_lines = [hook]
-        normalized.append(
-            {
-                "segment_id": int(item.get("segment_id") or index),
-                "start": start,
-                "end": end,
-                "title": str(item.get("title") or f"{source_name[:60]} Short {index}").strip(),
-                "hook": hook or "Wait for this vocal moment",
-                "caption_lines": caption_lines or ["Wait for this moment"],
-                "reason": str(item.get("reason") or "Chosen from the strongest detected music moment.").strip(),
-                "score": float(item.get("score") or 70),
-            }
-        )
-
-    if not normalized:
-        return _fallback_ai_shorts_plan(segments, transcript_df, source_name, objective)
-
-    posting_notes = plan.get("posting_notes")
-    return {
-        "video_title": str(plan.get("video_title") or source_name).strip(),
-        "shorts": normalized,
-        "posting_notes": [str(note).strip() for note in posting_notes if str(note).strip()] if isinstance(posting_notes, list) else [],
-    }
-
-
-def _shorts_error_message(error: Exception, stage: str) -> str:
-    text = str(error)
-    lower = text.lower()
-    if isinstance(error, ModuleNotFoundError):
-        return f"{stage} could not start because a Python package is missing: {error.name}. Run pip install -r requirements.txt, then try again."
-    if "ffmpeg" in lower or "ffprobe" in lower:
-        return f"{stage} needs FFmpeg available on PATH. Install FFmpeg, restart the terminal, then rerun A.R.I.A. Studio."
-    if "imagemagick" in lower or "textclip" in lower or "convert-im6" in lower:
-        return f"{stage} reached caption rendering, but MoviePy could not create text clips. Install ImageMagick or switch MoviePy text support on this machine, then render again."
-    if "no audio" in lower:
-        return f"{stage} needs a full performance video with an audio track. Upload a video file that includes the music."
-    if "model" in lower and ("whisper" in lower or "download" in lower):
-        return f"{stage} could not load the selected Whisper model. Try the tiny or base model first, or use the future model-download setting once we add it."
-    return f"{stage} failed: {text}"
-
-
-def _video_runtime_seconds(video_path: Path | None) -> float:
-    if video_path is None or not video_path.exists():
-        return 0.0
-
-    from moviepy.editor import VideoFileClip
-
-    with VideoFileClip(str(video_path)) as clip:
-        return round(float(clip.duration or 0.0), 2)
-
-
 def _chat_context(payload: dict[str, Any]) -> str:
+    settings = payload["settings"]
+    channel_name = settings.get("CHANNEL_NAME", "My Channel")
     analytics_df = payload["analytics_df"]
     video_df = payload["video_df"]
     today_payload = payload["today_payload"]
@@ -648,7 +474,7 @@ def _chat_context(payload: dict[str, Any]) -> str:
     weak = upload_takeaways.get("weak")
     return textwrap.dedent(
         f"""
-        Current Ralskies analytics context:
+        Current {channel_name} analytics context:
         - Data source: {payload["source"]}
         Data freshness:
         {freshness_context}
@@ -676,11 +502,6 @@ def _build_chat_prompt(message: str, history: list[ChatMessage], context: str) -
     recent_chat = "\n".join(f"{item.role}: {item.content}" for item in history[-8:])
     return textwrap.dedent(
         f"""
-        You are A.R.I.A. answering as if the creator is chatting directly with their analytics.
-        Be concrete, brief, and action-oriented. If data is demo, cached, missing, or uncertain, say so plainly.
-        The Analytics context below is your current stored database/cache context. Use it for any custom user wording, not only suggested prompt text.
-        Do not say "I do not have specific data in the current context" when the relevant stored rows or summaries are shown below. Instead, answer from the available rows and name any limits.
-        If the creator is only greeting you, testing the chat, thanking you, or making small talk, respond naturally in one short sentence and do not give analytics recommendations yet.
         Only give analytics recommendations when the creator asks for advice, analysis, decisions, risks, patterns, uploads, metadata, or next actions.
 
         Analytics context:
@@ -720,7 +541,7 @@ def _assistant_response(prompt: str, model: str) -> str:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are A.R.I.A., a concise private YouTube analytics strategist for Ralskies.",
+                    "content": "You are A.R.I.A., a concise private YouTube analytics strategist.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -738,7 +559,7 @@ def _stream_assistant_response(prompt: str, model: str):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are A.R.I.A., a concise private YouTube analytics strategist for Ralskies.",
+                    "content": "You are A.R.I.A., a concise private YouTube analytics strategist.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -773,8 +594,8 @@ def bootstrap() -> dict[str, Any]:
             "navigation": SIDEBAR_ITEMS,
             "chatSuggestions": CHAT_SUGGESTIONS,
             "profile": {
-                "title": profile.get("title", "Ralskies"),
-                "handle": profile.get("handle", "@ralskies"),
+                "title": profile.get("title", payload["settings"].get("CHANNEL_NAME", "My Channel")),
+                "handle": profile.get("handle", f"@{payload['settings'].get('CHANNEL_NAME', 'My Channel').lower()}"),
                 "source": payload["source"],
             },
             "stats": [{"label": label, "value": value, "meta": meta} for label, value, meta in stats],
@@ -887,7 +708,7 @@ def draft_upload_lab_tips(request: UploadTipsRequest) -> dict[str, str]:
     settings = load_vault_settings()
     prompt = textwrap.dedent(
         f"""
-        Give concise optimization tips for this Ralskies upload.
+        Give concise optimization tips for this {settings.get("CHANNEL_NAME", "My Channel")} upload.
         Return:
         1. What to keep
         2. What to change in title/thumbnail promise/description
@@ -931,6 +752,11 @@ def save_vault(request: VaultSettingsRequest) -> dict[str, Any]:
             "YOUTUBE_CLIENT_SECRET": request.youtube_client_secret,
             "MODEL_NAME": request.model_name,
             "MODEL_ENDPOINT": request.model_endpoint,
+            "ACTIVE_PROFILE": request.active_profile,
+            "CHANNEL_NAME": request.channel_name,
+            "NICHE": request.niche,
+            "TARGET_AUDIENCE": request.target_audience,
+            "TONE": request.tone,
         }
     )
     return vault()
@@ -1006,7 +832,7 @@ def draft_metadata(request: MetadataDraftRequest) -> dict[str, str]:
     payload = _load_context()
     prompt = textwrap.dedent(
         f"""
-        Draft safer YouTube metadata improvements for this Ralskies video.
+        Draft safer YouTube metadata improvements for this {payload["settings"].get("CHANNEL_NAME", "My Channel")} video.
         Return a concise result with:
         1. Suggested title option if the current title should change
         2. A refined description opening

@@ -68,6 +68,11 @@ export type VaultPayload = {
     youtube_client_secret: string;
     model_name: string;
     model_endpoint: string;
+    active_profile: string;
+    channel_name: string;
+    niche: string;
+    target_audience: string;
+    tone: string;
   };
   available_models: string[];
   recommended_free_vision_models: { name: string; label: string }[];

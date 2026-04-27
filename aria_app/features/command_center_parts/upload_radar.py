@@ -145,7 +145,7 @@ def render_next_cover_radar(
         trend_csv = trend_df[["query", "title", "channel_title"]].head(8).to_csv(index=False) if trend_df is not None and not trend_df.empty else "No trend videos."
         prompt = textwrap.dedent(
             f"""
-            Review this Next Cover Radar for Ralskies.
+            Review this Next Cover Radar for {st.session_state.vault_settings.get("CHANNEL_NAME", "this channel")}.
             Keep the answer concise and practical.
             Return:
             1. The single best next cover or song move

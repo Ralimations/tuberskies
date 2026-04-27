@@ -133,7 +133,7 @@ def build_momentum_ideas(topic_rows: list[dict[str, object]], trend_df: pd.DataF
     if trend_df is not None and not trend_df.empty:
         trend_titles = trend_df["title"].fillna("").astype(str).head(3).tolist()
         for title in trend_titles:
-            ideas.append(("Trend-adjacent option", f"Consider a Ralskies spin on: {title}"))
+            ideas.append(("Trend-adjacent option", f"Consider a {st.session_state.vault_settings.get('CHANNEL_NAME', 'Ralskies')} spin on: {title}"))
 
     deduped: list[tuple[str, str]] = []
     for item in ideas:
@@ -247,7 +247,7 @@ def render_momentum_planner(video_df: pd.DataFrame, settings: dict[str, str]) ->
             trend_csv = trend_df[["query", "title", "channel_title"]].head(8).to_csv(index=False) if trend_df is not None and not trend_df.empty else "No trend videos."
             prompt = textwrap.dedent(
                 f"""
-                Review this monthly momentum snapshot for Ralskies.
+                Review this monthly momentum snapshot for {st.session_state.vault_settings.get("CHANNEL_NAME", "this channel")}.
                 Keep the answer concise and strategic.
                 Return:
                 1. What topic or niche boomed most this month

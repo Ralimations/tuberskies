@@ -749,14 +749,10 @@ def load_vault_settings() -> dict[str, str]:
         "default_description": str(
             values.get(
                 "DEFAULT_DESCRIPTION",
-                "Best of Ralskies Playlist: https://www.youtube.com/\n"
-                "Spotify: https://open.spotify.com/\n"
-                "Apple Music: https://music.apple.com/\n"
-                "Join the Fanskies on Discord: https://discord.gg/\n\n"
-                "Gear used:\n"
-                "- Sennheiser XS-1\n"
-                "- M-Track DUO\n"
-                "- BandLab\n",
+                "Official Playlist: https://www.youtube.com/\n"
+                "Social Links: https://linktr.ee/\n\n"
+                "Gear & Setup:\n"
+                "- [Add gear here]\n",
             )
         ),
         "youtube_api_key": str(values.get("YOUTUBE_API_KEY", "")),
@@ -764,11 +760,11 @@ def load_vault_settings() -> dict[str, str]:
         "youtube_client_secret": str(values.get("YOUTUBE_CLIENT_SECRET", "")),
         "MODEL_NAME": str(values.get("MODEL_NAME", "google/gemma-4-e2b")),
         "MODEL_ENDPOINT": str(values.get("MODEL_ENDPOINT", "http://127.0.0.1:3010/v1")),
-        "ACTIVE_PROFILE": str(values.get("ACTIVE_PROFILE", "Ralskies (Default)")),
-        "CHANNEL_NAME": str(values.get("CHANNEL_NAME", "Ralskies")),
-        "NICHE": str(values.get("NICHE", "Theatrical covers like Epic the Musical and Hazbin Hotel, plus dreamy original songs")),
-        "TARGET_AUDIENCE": str(values.get("TARGET_AUDIENCE", "Fanskies")),
-        "TONE": str(values.get("TONE", "Emotional, dramatic, reimagined, and story-driven.")),
+        "ACTIVE_PROFILE": str(values.get("ACTIVE_PROFILE", "My Channel (Default)")),
+        "CHANNEL_NAME": str(values.get("CHANNEL_NAME", "My Channel")),
+        "NICHE": str(values.get("NICHE", "Entertainment, education, or performance content.")),
+        "TARGET_AUDIENCE": str(values.get("TARGET_AUDIENCE", "Viewers")),
+        "TONE": str(values.get("TONE", "Engaging and professional.")),
     }
 
 

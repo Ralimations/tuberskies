@@ -13,7 +13,7 @@ SUGGESTED_ANALYTICS_PROMPTS = [
     "What should I do next today?",
     "Which upload pattern should I repeat?",
     "What is the biggest risk in my analytics?",
-    "What should I turn into Shorts?",
+    "What is my next best creator move?",
 ]
 
 
@@ -54,7 +54,7 @@ def build_analytics_chat_context(
 
     return textwrap.dedent(
         f"""
-        Current Ralskies Analytics Context:
+        Current {st.session_state.vault_settings.get("CHANNEL_NAME", "Ralskies")} Analytics Context:
         - Last 30 days views: {views_30:,}
         - Last 30 days watch time hours: {watch_hours_30:.1f}
         - Last 7 days average retention: {retention_7:.2f}%
@@ -163,7 +163,7 @@ def render_analytics_chat(
                 st.write(message["content"])
     else:
         with st.chat_message("assistant"):
-            st.write("Ask me what to fix, repeat, post, package, or turn into Shorts. I am reading the current analytics context for this session.")
+            st.write("Ask me what to fix, repeat, post, or package. I am reading the current analytics context for this session.")
 
     typed_prompt = ""
     with st.form("aria_analytics_chat_form", clear_on_submit=True):

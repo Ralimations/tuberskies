@@ -75,8 +75,8 @@ def render_command_center() -> None:
         )
         return
 
-    channel_name = str(live_profile.get("title", "Ralskies")) if live_profile else "Ralskies"
-    channel_handle = str(live_profile.get("handle", "@ralskies")) if live_profile else "@ralskies"
+    channel_name = str(live_profile.get("title", st.session_state.vault_settings.get("CHANNEL_NAME", "Ralskies"))) if live_profile else st.session_state.vault_settings.get("CHANNEL_NAME", "Ralskies")
+    channel_handle = str(live_profile.get("handle", f"@{st.session_state.vault_settings.get('CHANNEL_NAME', 'Ralskies').lower()}")) if live_profile else f"@{st.session_state.vault_settings.get('CHANNEL_NAME', 'Ralskies').lower()}"
     status = "Live YouTube connected" if live_df is not None else "Demo analytics until YouTube is connected"
     render_creator_hero(
         channel_name=channel_name,
@@ -177,7 +177,7 @@ def render_command_center() -> None:
                 sample = analytics_df[["date", selected_metric]].tail(14).to_csv(index=False)
                 prompt = textwrap.dedent(
                     f"""
-                    Review this Ralskies performance trend and explain what may be happening.
+                    Review this {channel_name} performance trend and explain what may be happening.
                     Focus on practical actions for the next upload cycle.
 
                     Metric: {selected_metric}
