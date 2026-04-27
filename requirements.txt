@@ -9,10 +9,4 @@ google-auth-oauthlib
 python-dotenv
 python-multipart
 psycopg[binary]
-librosa
-pydub
-faster-whisper
-moviepy
-ffmpeg-python
-torch
 requests

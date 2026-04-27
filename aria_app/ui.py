@@ -10,8 +10,6 @@ from .theme import APP_CSS
 
 SECTION_QUERY_KEYS = {
     "command_center_section": {"Dashboard", "Analytics", "Pattern Memory", "Upload Lab"},
-    "repertoire_section": {"Idea Board", "Timeline", "A.R.I.A. Notes"},
-    "shorts_section": {"Ingest", "Cutting Room", "Render"},
     "upload_lab_section": {"Summary", "History", "Momentum", "Radar"},
     "momentum_workspace_section": {"Snapshot", "Scoreboards", "Trend Watch"},
 }

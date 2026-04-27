@@ -764,6 +764,11 @@ def load_vault_settings() -> dict[str, str]:
         "youtube_client_secret": str(values.get("YOUTUBE_CLIENT_SECRET", "")),
         "MODEL_NAME": str(values.get("MODEL_NAME", "google/gemma-4-e2b")),
         "MODEL_ENDPOINT": str(values.get("MODEL_ENDPOINT", "http://127.0.0.1:3010/v1")),
+        "ACTIVE_PROFILE": str(values.get("ACTIVE_PROFILE", "Ralskies (Default)")),
+        "CHANNEL_NAME": str(values.get("CHANNEL_NAME", "Ralskies")),
+        "NICHE": str(values.get("NICHE", "Theatrical covers like Epic the Musical and Hazbin Hotel, plus dreamy original songs")),
+        "TARGET_AUDIENCE": str(values.get("TARGET_AUDIENCE", "Fanskies")),
+        "TONE": str(values.get("TONE", "Emotional, dramatic, reimagined, and story-driven.")),
     }
 
 

@@ -28,18 +28,14 @@ from aria_app.features.command_center_parts.keyword_tools import build_keyword_o
 from aria_app.features.command_center_parts.upload_metrics import build_upload_takeaways
 from aria_app.pattern_memory import refresh_pattern_memory
 from mock_data import generate_analytics_data
-from shorts_architect import SHORTS_OUTPUT_DIR, SHORTS_WORKDIR, analyze_video_pipeline, preview_shorts_frames, render_ai_shorts, sample_segment_frames, sample_video_frames, save_uploaded_bytes
 from storage import (
     PRIORITIES,
     STAGES,
-    delete_shorts_project,
+    STAGES,
     list_api_cache_rows,
-    list_shorts_projects,
     load_calendar,
-    load_shorts_project,
     load_vault_settings,
     save_calendar,
-    save_shorts_project,
     save_vault_settings,
     database_status,
 )
@@ -84,8 +80,6 @@ SIDEBAR_ITEMS = [
     {"label": "Upload Lab", "path": "/upload-lab", "icon": "upload", "group": "More tools"},
     {"label": "A.R.I.A. Memory", "path": "/pattern-memory", "icon": "memory", "group": "More tools"},
     {"label": "Ideation", "path": "/ideation", "icon": "spark", "group": "More tools"},
-    {"label": "Repertoire", "path": "/repertoire", "icon": "music", "group": "More tools"},
-    {"label": "Shorts Architect", "path": "/shorts", "icon": "scissors", "group": "More tools"},
     {"label": "The Vault", "path": "/vault", "icon": "vault", "group": "More tools"},
 ]
 
@@ -124,19 +118,6 @@ class VaultSettingsRequest(BaseModel):
     model_endpoint: str = "http://127.0.0.1:3010/v1"
 
 
-class CalendarRow(BaseModel):
-    title: str = ""
-    stage: str = STAGES[0]
-    priority: str = "Medium"
-    content_pillar: str = ""
-    target_upload_date: str | None = None
-    notes: str = ""
-
-
-class CalendarSaveRequest(BaseModel):
-    rows: list[CalendarRow]
-
-
 class CoachRequest(BaseModel):
     prompt: str
 
@@ -164,37 +145,6 @@ class MetadataPublishRequest(BaseModel):
     reviewed: bool = False
 
 
-class ShortsPlanClip(BaseModel):
-    segment_id: int | None = None
-    start: float = 0.0
-    end: float = 35.0
-    title: str = ""
-    hook: str = ""
-    caption_lines: list[str] = []
-    reason: str = ""
-    score: float = 0.0
-
-
-class ShortsRenderRequest(BaseModel):
-    main_video_path: str
-    broll_video_path: str = ""
-    shorts: list[ShortsPlanClip]
-    layout_mode: str = "Solo Mode"
-    text_color: str = "#ffd166"
-    add_outline: bool = True
-
-
-class ShortsPreviewRequest(BaseModel):
-    main_video_path: str
-    shorts: list[ShortsPlanClip]
-
-
-class ShortsProjectSaveRequest(BaseModel):
-    id: str = ""
-    title: str = "Untitled Shorts Project"
-    payload: dict[str, Any]
-
-
 ACTION_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "creator_action_log.jsonl"
 FREE_VISION_MODELS = [
     {"name": "moondream", "label": "moondream - lightweight free vision model"},
@@ -217,18 +167,6 @@ def _get_client() -> OpenAI:
 
 def _is_known_free_vision_model(model_name: str) -> bool:
     return True  # LM Studio model choice is user-driven
-
-
-def _resolve_shorts_path(raw_path: str, allow_empty: bool = False) -> Path | None:
-    if not raw_path and allow_empty:
-        return None
-    path = Path(raw_path).expanduser().resolve()
-    allowed_roots = [SHORTS_WORKDIR.resolve(), SHORTS_OUTPUT_DIR.resolve()]
-    if not any(path == root or root in path.parents for root in allowed_roots):
-        raise ValueError("Shorts render paths must come from the local Shorts workspace.")
-    if not path.exists():
-        raise ValueError(f"Shorts file was not found: {path}")
-    return path
 
 
 def _extract_json_object(raw_text: str) -> dict[str, Any] | None:
@@ -275,8 +213,6 @@ def _video_options(video_df: pd.DataFrame | None) -> list[dict[str, str]]:
 def _build_react_action_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
     analytics_df = payload["analytics_df"]
     video_df = payload["video_df"]
-    calendar_df = payload["calendar_df"]
-    today_payload = payload["today_payload"]
     upload_takeaways = payload["upload_takeaways"]
     cards: list[dict[str, Any]] = []
 
@@ -295,17 +231,6 @@ def _build_react_action_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "path": "/",
             }
         )
-
-    focus_title = today_payload.get("focus_title", "")
-    cards.append(
-        {
-            "category": "Production",
-            "title": f"Move {focus_title} forward" if focus_title and focus_title != "No active song selected" else "Add one active song to the pipeline",
-            "body": today_payload.get("focus_reason", "A.R.I.A. needs one current song before it can rank the best production move."),
-            "cta": "Open Repertoire",
-            "path": "/repertoire",
-        }
-    )
 
     best = upload_takeaways.get("best") if upload_takeaways else None
     if best is not None:
@@ -333,37 +258,10 @@ def _build_react_action_cards(payload: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
-    if calendar_df is not None and not calendar_df.empty:
-        active = calendar_df[calendar_df["stage"].isin(["Upload", "Video Editing", "BandLab Recording"])]
-        if not active.empty:
-            row = active.iloc[0]
-            cards.append(
-                {
-                    "category": "Shorts",
-                    "title": "Turn the next performance into Shorts",
-                    "body": f"{row.get('title', 'Your next release')} is far enough along to prepare vertical clips or captions.",
-                    "cta": "Open Shorts Architect",
-                    "path": "/shorts",
-                }
-            )
-
     return cards[:6]
 
 
-def _calendar_rows_to_frame(rows: list[CalendarRow]) -> pd.DataFrame:
-    frame = pd.DataFrame([row.model_dump() for row in rows])
-    if frame.empty:
-        frame = pd.DataFrame(columns=["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"])
-    for column in ["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"]:
-        if column not in frame.columns:
-            frame[column] = ""
-    frame["title"] = frame["title"].fillna("").astype(str)
-    frame["stage"] = frame["stage"].where(frame["stage"].isin(STAGES), STAGES[0])
-    frame["priority"] = frame["priority"].where(frame["priority"].isin(PRIORITIES), "Medium")
-    frame["content_pillar"] = frame["content_pillar"].fillna("").astype(str)
-    frame["notes"] = frame["notes"].fillna("").astype(str)
-    frame["target_upload_date"] = pd.to_datetime(frame["target_upload_date"], errors="coerce")
-    return frame[["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"]]
+
 
 
 def _json_safe(value: Any) -> Any:
@@ -492,7 +390,6 @@ def _metadata_action_rows(video_df: pd.DataFrame | None) -> list[dict[str, Any]]
 
 def _load_context() -> dict[str, Any]:
     settings = load_vault_settings()
-    calendar_df = load_calendar()
     cache_freshness = _build_cache_freshness_rows()
     live_df, live_message = cached_live_analytics(settings)
     video_df, video_message = cached_video_performance(settings)
@@ -504,8 +401,8 @@ def _load_context() -> dict[str, Any]:
 
     analytics_df = live_df if live_df is not None else generate_analytics_data(days=90)
     upload_takeaways = build_upload_takeaways(video_df if video_df is not None else pd.DataFrame())
-    pattern_memory = refresh_pattern_memory(analytics_df, calendar_df, "")
-    today_payload = build_today_desk_payload(analytics_df, calendar_df, "")
+    pattern_memory = refresh_pattern_memory(analytics_df, pd.DataFrame(), "")
+    today_payload = build_today_desk_payload(analytics_df, pd.DataFrame(), "")
     profile = live_profile or {"title": "Ralskies", "handle": "@ralskies"}
     source = "Live YouTube" if live_df is not None else "Demo analytics"
 
@@ -513,7 +410,6 @@ def _load_context() -> dict[str, Any]:
         "settings": settings,
         "analytics_df": analytics_df,
         "video_df": video_df if video_df is not None else pd.DataFrame(),
-        "calendar_df": calendar_df,
         "profile": profile,
         "source": source,
         "messages": {
@@ -738,7 +634,6 @@ def _video_runtime_seconds(video_path: Path | None) -> float:
 def _chat_context(payload: dict[str, Any]) -> str:
     analytics_df = payload["analytics_df"]
     video_df = payload["video_df"]
-    calendar_df = payload["calendar_df"]
     today_payload = payload["today_payload"]
     upload_takeaways = payload["upload_takeaways"]
     pattern_snapshot = payload["pattern_memory"].get("latest")
@@ -749,17 +644,8 @@ def _chat_context(payload: dict[str, Any]) -> str:
     watch_hours_30 = float(last_30["watch_time_hours"].fillna(0).sum()) if not last_30.empty and "watch_time_hours" in last_30 else 0
     uploads_count = int(len(video_df)) if video_df is not None else 0
     analytics_count = int(len(analytics_df)) if analytics_df is not None else 0
-    calendar_count = int(len(calendar_df)) if calendar_df is not None else 0
     best = upload_takeaways.get("best")
     weak = upload_takeaways.get("weak")
-    shorts_projects = list_shorts_projects()
-    latest_shorts_project = shorts_projects[0] if shorts_projects else None
-    shorts_context = (
-        f"{len(shorts_projects)} saved Shorts project(s). Latest: {latest_shorts_project.get('title', 'Untitled')} updated {latest_shorts_project.get('updated_at', '')}."
-        if latest_shorts_project
-        else "No saved Shorts analysis projects yet. Shorts Architect can analyze uploaded performances, create AI cut plans, preview frames, and render MP4s after a video is uploaded."
-    )
-
     return textwrap.dedent(
         f"""
         Current Ralskies analytics context:
@@ -770,13 +656,11 @@ def _chat_context(payload: dict[str, Any]) -> str:
         - Last 30 days watch time hours: {watch_hours_30:.1f}
         - Stored analytics rows available: {analytics_count}
         - Stored upload rows available: {uploads_count}
-        - Stored repertoire rows available: {calendar_count}
         - Today focus: {today_payload.get("focus_title", "unknown")}
         - Today risk: {today_payload.get("risk_title", "unknown")} | {today_payload.get("risk_reason", "")}
         - Today opportunity: {today_payload.get("opportunity_title", "unknown")} | {today_payload.get("opportunity_reason", "")}
         - Best upload: {best.to_dict() if hasattr(best, "to_dict") else best}
         - Weakest upload: {weak.to_dict() if hasattr(weak, "to_dict") else weak}
-        - Shorts Architect: {shorts_context}
         - Pattern memory snapshot: {pattern_snapshot or {}}
 
         Recent daily analytics:
@@ -784,9 +668,6 @@ def _chat_context(payload: dict[str, Any]) -> str:
 
         Top uploads:
         {_preview_frame(video_df, ["title", "views", "retention", "watch_time_hours", "subscribers_gained", "engagement_score"], 8)}
-
-        Repertoire:
-        {_preview_frame(calendar_df, ["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"], 10)}
         """
     ).strip()
 
@@ -800,8 +681,7 @@ def _build_chat_prompt(message: str, history: list[ChatMessage], context: str) -
         The Analytics context below is your current stored database/cache context. Use it for any custom user wording, not only suggested prompt text.
         Do not say "I do not have specific data in the current context" when the relevant stored rows or summaries are shown below. Instead, answer from the available rows and name any limits.
         If the creator is only greeting you, testing the chat, thanking you, or making small talk, respond naturally in one short sentence and do not give analytics recommendations yet.
-        Only give analytics recommendations when the creator asks for advice, analysis, decisions, risks, patterns, uploads, Shorts, metadata, or next actions.
-        If the creator asks about Shorts and there are no saved Shorts projects yet, explain what Shorts Architect can do and suggest the next upload/analyze step instead of saying there is no Shorts data.
+        Only give analytics recommendations when the creator asks for advice, analysis, decisions, risks, patterns, uploads, metadata, or next actions.
 
         Analytics context:
         {context}
@@ -816,44 +696,7 @@ def _build_chat_prompt(message: str, history: list[ChatMessage], context: str) -
 
 
 def _direct_chat_response(message: str, payload: dict[str, Any]) -> str | None:
-    lowered = message.lower()
-    if "short" not in lowered:
-        return None
-
-    projects = list_shorts_projects()
-    video_df = payload["video_df"]
-    if projects:
-        latest = projects[0]
-        return (
-            f"You have {len(projects)} saved Shorts Architect project(s). "
-            f"The latest is {latest.get('title', 'Untitled')}. Open Shorts Architect to preview, edit, or render the saved AI cut plan."
-        )
-
-    if video_df is None or video_df.empty:
-        return (
-            "No saved Shorts projects or upload rows are available yet. "
-            "Next step: upload a full video in Shorts Architect, let A.R.I.A. analyze the music and frames, then generate the cut plan."
-        )
-
-    candidates = video_df.copy()
-    if "engagement_score" in candidates.columns:
-        candidates["_rank"] = pd.to_numeric(candidates["engagement_score"], errors="coerce").fillna(0)
-    elif "views" in candidates.columns:
-        candidates["_rank"] = pd.to_numeric(candidates["views"], errors="coerce").fillna(0)
-    else:
-        candidates["_rank"] = 0
-    top_rows = candidates.sort_values("_rank", ascending=False).head(3)
-    lines = []
-    for index, row in enumerate(top_rows.to_dict(orient="records"), start=1):
-        title = str(row.get("title") or "Untitled upload")
-        views = row.get("views", "unknown views")
-        retention = row.get("retention", "unknown retention")
-        lines.append(f"{index}. {title} | views: {views} | retention: {retention}")
-    return (
-        "No saved Shorts Architect projects yet, but the stored upload data gives us candidates to test first:\n"
-        + "\n".join(lines)
-        + "\nNext step: upload the strongest full performance in Shorts Architect and let A.R.I.A. pick cuts, titles, captions, and renderable clips."
-    )
+    return None
 
 
 def _small_talk_response(message: str) -> str | None:
@@ -920,8 +763,7 @@ def bootstrap() -> dict[str, Any]:
     analytics_df = payload["analytics_df"]
     video_df = payload["video_df"]
     profile = payload["profile"]
-    calendar_df = payload["calendar_df"]
-    stats = build_creator_hero_stats(analytics_df, video_df, calendar_df, profile if profile else None)
+    stats = build_creator_hero_stats(analytics_df, video_df, pd.DataFrame(), profile if profile else None)
     analytics_rows = analytics_df.tail(30).copy()
     if "date" in analytics_rows.columns:
         analytics_rows["date"] = pd.to_datetime(analytics_rows["date"], errors="coerce").dt.strftime("%Y-%m-%d")
@@ -941,7 +783,6 @@ def bootstrap() -> dict[str, Any]:
             "patternMemory": payload["pattern_memory"].get("latest"),
             "analyticsRows": analytics_rows,
             "videoRows": video_df.head(20),
-            "calendarRows": calendar_df,
             "messages": payload["messages"],
             "cache": payload["cache_freshness"],
         }
@@ -1012,12 +853,11 @@ def score_ideation(request: IdeationRequest) -> dict[str, Any]:
 def analytics() -> dict[str, Any]:
     payload = _load_context()
     analytics_df = payload["analytics_df"]
-    calendar_df = payload["calendar_df"]
     video_df = payload["video_df"]
     analytics_rows = analytics_df.tail(45).copy()
     trend_rows = get_trend_rows(analytics_df).copy()
     timing_df = build_publish_timing_table(analytics_df)
-    audit_rows = build_channel_audit_rows(analytics_df, calendar_df, payload["settings"])
+    audit_rows = build_channel_audit_rows(analytics_df, pd.DataFrame(), payload["settings"])
 
     for frame in (analytics_rows, trend_rows):
         if "date" in frame.columns:
@@ -1029,7 +869,7 @@ def analytics() -> dict[str, Any]:
             "profile": payload["profile"],
             "stats": [
                 {"label": label, "value": value, "meta": meta}
-                for label, value, meta in build_creator_hero_stats(analytics_df, video_df, calendar_df, payload["profile"])
+                for label, value, meta in build_creator_hero_stats(analytics_df, video_df, pd.DataFrame(), payload["profile"])
             ],
             "today": payload["today_payload"],
             "rows": analytics_rows,
@@ -1136,42 +976,6 @@ def check_latest_youtube_data() -> dict[str, Any]:
     )
 
 
-@app.get("/api/repertoire")
-def repertoire() -> dict[str, Any]:
-    frame = load_calendar()
-    stage_counts = frame["stage"].value_counts().reindex(STAGES, fill_value=0).to_dict()
-    due_soon = frame[
-        frame["target_upload_date"].notna()
-        & (frame["target_upload_date"] <= pd.Timestamp.today().normalize() + pd.Timedelta(days=14))
-    ]
-    return _json_safe(
-        {
-            "rows": frame,
-            "stages": STAGES,
-            "priorities": PRIORITIES,
-            "summary": {
-                "total": len(frame),
-                "ready": int(stage_counts.get("Upload", 0)),
-                "due_soon": len(due_soon),
-                "stage_counts": stage_counts,
-            },
-        }
-    )
-
-
-@app.post("/api/repertoire")
-def save_repertoire(request: CalendarSaveRequest) -> dict[str, Any]:
-    save_calendar(_calendar_rows_to_frame(request.rows))
-    return repertoire()
-
-
-@app.post("/api/repertoire/coach")
-def coach_repertoire(request: CoachRequest) -> dict[str, str]:
-    settings = load_vault_settings()
-    response = _assistant_response(request.prompt, settings.get("ollama_model", "gemma"))
-    return {"content": response or "A.R.I.A. could not produce repertoire feedback."}
-
-
 @app.get("/api/creator-actions")
 def creator_actions() -> dict[str, Any]:
     settings = load_vault_settings()
@@ -1249,209 +1053,9 @@ def publish_metadata(request: MetadataPublishRequest) -> dict[str, Any]:
     return {"success": success, "message": message}
 
 
-@app.post("/api/shorts/ai-analyze")
-def analyze_shorts_with_ai(
-    main_video: UploadFile = File(...),
-    broll_video: UploadFile | None = File(None),
-    whisper_model: str = Form("small"),
-    layout_mode: str = Form("Solo Mode"),
-    objective: str = Form("Retention hook"),
-    vision_model: str = Form(""),
-) -> dict[str, Any]:
-    warnings: list[str] = []
-    empty_response = {
-        "success": False,
-        "message": "Shorts AI analysis did not complete.",
-        "warnings": warnings,
-        "main_video_path": "",
-        "broll_video_path": "",
-        "mainVideo": {"filename": "", "path": "", "duration_seconds": 0.0},
-        "brollVideo": {"filename": "", "path": "", "duration_seconds": 0.0},
-        "segments": [],
-        "transcriptRows": [],
-        "visualNotes": "",
-        "aiPlan": {"shorts": [], "posting_notes": []},
-        "rawModelResponse": "",
-    }
-    try:
-        settings = load_vault_settings()
-        active_vision_model = vision_model.strip() or settings.get("model_name", "").strip()
-        main_path = save_uploaded_bytes(main_video.filename or "main_video.mp4", main_video.file.read(), "main_video")
-        broll_path = (
-            save_uploaded_bytes(broll_video.filename or "broll_video.mp4", broll_video.file.read(), "broll_video")
-            if broll_video is not None
-            else None
-        )
-        main_runtime = _video_runtime_seconds(main_path)
-        broll_runtime = _video_runtime_seconds(broll_path)
-        segments, transcript_df = analyze_video_pipeline(main_path, whisper_model=whisper_model)
-        if transcript_df.attrs.get("warning"):
-            warnings.append(str(transcript_df.attrs["warning"]))
-        try:
-            # Smart sampling: get frames from the actual high-energy segments
-            frame_paths = sample_segment_frames(main_path, segments)
-            # If no segments or sampling failed, fall back to uniform sampling
-            if not frame_paths:
-                frame_paths = sample_video_frames(main_path, frame_count=6)
-        except Exception as error:
-            frame_paths = []
-            warnings.append(_shorts_error_message(error, "Visual frame sampling"))
-        visual_notes = _frame_visual_notes(frame_paths, active_vision_model)
-        if visual_notes.startswith("Visual pass skipped:"):
-            warnings.append(visual_notes)
-        prompt = _build_ai_shorts_prompt(
-            segments=segments,
-            transcript_df=transcript_df,
-            source_name=main_video.filename or main_path.name,
-            layout_mode=layout_mode,
-            objective=objective,
-            visual_notes=visual_notes,
-        )
-        model = settings.get("model_name", "google/gemma-4-e2b")
-        raw_response = _assistant_response(prompt, model)
-        parsed_plan = _extract_json_object(raw_response)
-        if parsed_plan is None:
-            warnings.append("The local text model did not return valid JSON, so A.R.I.A. used a fallback cut plan.")
-        ai_plan = _normalize_ai_shorts_plan(parsed_plan, segments, transcript_df, main_video.filename or main_path.stem, objective)
-        _log_action(
-            "shorts_ai_analysis",
-            {
-                "main_video": str(main_path),
-                "broll_video": str(broll_path) if broll_path else "",
-                "segment_count": len(segments),
-                "transcript_rows": len(transcript_df),
-                "vision_model": active_vision_model,
-                "warning_count": len(warnings),
-            },
-        )
-        return _json_safe(
-            {
-                "success": True,
-                "message": f"AI plan ready: {len(ai_plan.get('shorts', []))} cut(s) selected.",
-                "warnings": warnings,
-                "main_video_path": str(main_path),
-                "broll_video_path": str(broll_path) if broll_path else "",
-                "mainVideo": {
-                    "filename": main_video.filename or main_path.name,
-                    "path": str(main_path),
-                    "duration_seconds": main_runtime,
-                },
-                "brollVideo": {
-                    "filename": broll_video.filename if broll_video else "",
-                    "path": str(broll_path) if broll_path else "",
-                    "duration_seconds": broll_runtime,
-                },
-                "segments": segments,
-                "transcriptRows": transcript_df,
-                "visualNotes": visual_notes,
-                "aiPlan": ai_plan,
-                "rawModelResponse": raw_response,
-            }
-        )
-    except Exception as error:
-        empty_response["message"] = _shorts_error_message(error, "Shorts AI analysis")
-        return _json_safe(empty_response)
 
 
-@app.post("/api/shorts/render")
-def render_shorts_from_ai_plan(request: ShortsRenderRequest) -> dict[str, Any]:
-    try:
-        main_path = _resolve_shorts_path(request.main_video_path)
-        broll_path = _resolve_shorts_path(request.broll_video_path, allow_empty=True)
-        if main_path is None:
-            return {"success": False, "message": "A main video path is required.", "outputs": []}
-        if request.layout_mode == "Duet Mode" and broll_path is None:
-            return {"success": False, "message": "Duet Mode needs a B-Roll / Reference video. Switch to Solo Mode or upload B-Roll before rendering.", "outputs": []}
-        if not request.shorts:
-            return {"success": False, "message": "No cut plan was provided. Run AI Director or restore the AI plan before rendering.", "outputs": []}
-        outputs = render_ai_shorts(
-            main_video_path=main_path,
-            broll_video_path=broll_path,
-            shorts_plan=[clip.dict() for clip in request.shorts],
-            layout_mode=request.layout_mode,
-            text_color=request.text_color,
-            add_outline=request.add_outline,
-        )
-        if not outputs:
-            return {"success": False, "message": "No Shorts were rendered. Check that every cut has a valid start/end time inside the source video.", "outputs": []}
-    except Exception as error:
-        return {"success": False, "message": _shorts_error_message(error, "Shorts render"), "outputs": []}
 
-    _log_action(
-        "shorts_ai_render",
-        {
-            "main_video": str(main_path),
-            "broll_video": str(broll_path) if broll_path else "",
-            "output_count": len(outputs),
-        },
-    )
-    return {
-        "success": True,
-        "message": f"Rendered {len(outputs)} Shorts export(s).",
-        "outputs": [str(path) for path in outputs],
-    }
-
-
-@app.post("/api/shorts/preview-frames")
-def preview_shorts_from_ai_plan(request: ShortsPreviewRequest) -> dict[str, Any]:
-    try:
-        main_path = _resolve_shorts_path(request.main_video_path)
-        if main_path is None:
-            return {"success": False, "message": "A main video path is required.", "frames": []}
-        if not request.shorts:
-            return {"success": False, "message": "No cut plan was provided. Run AI Director or restore the AI plan before previewing.", "frames": []}
-        previews = preview_shorts_frames(main_path, [clip.dict() for clip in request.shorts])
-        if not previews:
-            return {"success": False, "message": "No preview frames were created. Check that every cut has a valid start/end time inside the source video.", "frames": []}
-    except Exception as error:
-        return {"success": False, "message": _shorts_error_message(error, "Shorts preview"), "frames": []}
-
-    frames = []
-    for preview in previews:
-        frame_path = Path(str(preview["path"]))
-        image_data = base64.b64encode(frame_path.read_bytes()).decode("ascii")
-        frames.append(
-            {
-                "index": preview["index"],
-                "start": preview["start"],
-                "end": preview["end"],
-                "timestamp": preview["timestamp"],
-                "imageDataUrl": f"data:image/jpeg;base64,{image_data}",
-            }
-        )
-    return {
-        "success": True,
-        "message": f"Built {len(frames)} cut preview frame(s).",
-        "frames": frames,
-    }
-
-
-@app.get("/api/shorts/projects")
-def list_saved_shorts_projects() -> dict[str, Any]:
-    return {"projects": list_shorts_projects()}
-
-
-@app.get("/api/shorts/projects/{project_id}")
-def get_saved_shorts_project(project_id: str) -> dict[str, Any]:
-    project = load_shorts_project(project_id)
-    if project is None:
-        return {"success": False, "message": "Shorts project was not found.", "project": None}
-    return {"success": True, "message": "Shorts project loaded.", "project": project}
-
-
-@app.post("/api/shorts/projects")
-def save_saved_shorts_project(request: ShortsProjectSaveRequest) -> dict[str, Any]:
-    project = save_shorts_project(
-        {
-            "id": request.id,
-            "title": request.title,
-            "payload": request.payload,
-        }
-    )
-    return {"success": True, "message": "Shorts project saved.", "project": project, "projects": list_shorts_projects()}
-
-
-@app.delete("/api/shorts/projects/{project_id}")
-def remove_saved_shorts_project(project_id: str) -> dict[str, Any]:
-    delete_shorts_project(project_id)
-    return {"success": True, "message": "Shorts project deleted.", "projects": list_shorts_projects()}
+@app.get("/api/health")
+def health() -> dict[str, Any]:
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}

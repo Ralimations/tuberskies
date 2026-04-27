@@ -7,16 +7,21 @@ from typing import Iterable
 from .llm_client import get_llm_client, is_custom_api, get_model_name
 
 
-ARIA_SYSTEM_PROMPT = (
-    "You are A.R.I.A. (Algorithmic Retention & Intelligence Assistant), the private AI strategy coach "
-    "for the YouTube channel 'Ralskies'. Ralskies is a male vocalist who specializes in theatrical "
-    "covers like Epic the Musical and Hazbin Hotel, plus dreamy original songs. His community is called "
-    "the Fanskies. Your job is to analyze retention and concept strength, brainstorm high-retention "
-    "video ideas, write SEO-optimized metadata for musical covers, and help identify fan song requests "
-    "from comments or request dumps. Be encouraging but highly strategic. Respect his DIY BandLab "
-    "workflow. When suggesting titles or concepts, lean into emotional, dramatic, reimagined, and "
-    "story-driven framing."
-)
+def get_system_prompt(vault_settings: dict[str, str]) -> str:
+    channel_name = vault_settings.get("CHANNEL_NAME", "Ralskies")
+    niche = vault_settings.get("NICHE", "Theatrical covers like Epic the Musical and Hazbin Hotel, plus dreamy original songs")
+    target_audience = vault_settings.get("TARGET_AUDIENCE", "Fanskies")
+    tone = vault_settings.get("TONE", "Emotional, dramatic, reimagined, and story-driven.")
+    
+    return (
+        f"You are A.R.I.A. (Algorithmic Retention & Intelligence Assistant), the private AI strategy coach "
+        f"for the YouTube channel '{channel_name}'. {channel_name} specializes in {niche}. "
+        f"The community/target audience is called '{target_audience}'. Your job is to analyze retention and concept strength, "
+        f"brainstorm high-retention video ideas, write SEO-optimized metadata, and help identify fan requests "
+        f"from comments or request dumps. Be encouraging but highly strategic. Respect the creator's workflow. "
+        f"When suggesting titles or concepts, lean into the following tone: {tone}"
+    )
+
 
 RESPONSE_STYLE_INSTRUCTIONS = {
     "Concise": "Keep answers brief and easy to scan. Prefer 3-5 short bullets or one short paragraph. Do not provide detailed reasoning unless the user asks for depth.",
@@ -33,8 +38,11 @@ def stream_aria_response(
     upload_takeaways: dict[str, object] | None = None,
 ) -> Iterable[str]:
     try:
+        from storage import load_vault_settings
+        vault_settings = load_vault_settings()
+        base_system_prompt = get_system_prompt(vault_settings)
         system_prompt = (
-            f"{ARIA_SYSTEM_PROMPT} "
+            f"{base_system_prompt} "
             f"{RESPONSE_STYLE_INSTRUCTIONS.get(response_style, RESPONSE_STYLE_INSTRUCTIONS['Concise'])}"
         )
         if pattern_snapshot:
@@ -84,14 +92,11 @@ def build_pattern_memory_context(pattern_snapshot: dict[str, object]) -> str:
         return ""
 
     publish_memory = pattern_snapshot.get("publish_memory", {})
-    stage_memory = pattern_snapshot.get("stage_memory", {})
     title_patterns = pattern_snapshot.get("title_patterns", [])
-    pillar_memory = pattern_snapshot.get("pillar_memory", [])
     repeat_more = pattern_snapshot.get("repeat_more", [])
     reduce_or_fix = pattern_snapshot.get("reduce_or_fix", [])
 
     title_pattern_line = ", ".join(str(item.get("pattern", "")) for item in title_patterns[:4] if item.get("pattern")) or "none yet"
-    pillar_line = ", ".join(str(item.get("pillar", "")) for item in pillar_memory[:4] if item.get("pillar")) or "none yet"
     repeat_line = " | ".join(str(item) for item in repeat_more[:3]) or "none yet"
     reduce_line = " | ".join(str(item) for item in reduce_or_fix[:3]) or "none yet"
 
@@ -100,10 +105,7 @@ def build_pattern_memory_context(pattern_snapshot: dict[str, object]) -> str:
         Local Pattern Memory:
         - Best weekday to push strong uploads: {publish_memory.get('best_day', 'unknown')} (score: {publish_memory.get('best_score', 'n/a')})
         - Weakest weekday: {publish_memory.get('weak_day', 'unknown')} (score: {publish_memory.get('weak_score', 'n/a')})
-        - Current production bottleneck: {stage_memory.get('bottleneck_stage', 'unknown')} with {stage_memory.get('bottleneck_count', 0)} item(s)
-        - Overdue repertoire items: {stage_memory.get('overdue_count', 0)}
         - Repeated title patterns: {title_pattern_line}
-        - Active content pillars: {pillar_line}
         - Repeat more often: {repeat_line}
         - Reduce or fix: {reduce_line}
         Use this local memory to make recommendations more tailored and less generic.
@@ -148,47 +150,53 @@ def build_upload_history_context(upload_takeaways: dict[str, object]) -> str:
 
 
 def build_coach_prompt(topic: str, working_title: str, action: str) -> str:
+    from storage import load_vault_settings
+    vault_settings = load_vault_settings()
+    channel_name = vault_settings.get("CHANNEL_NAME", "Ralskies")
+    target_audience = vault_settings.get("TARGET_AUDIENCE", "Fanskies")
+    tone = vault_settings.get("TONE", "Emotional, dramatic, reimagined, and story-driven.")
+
     prompts = {
         "title_pack": f"""
-        Generate 5 high-retention YouTube titles for Ralskies.
-        Lean into emotional, dramatic, theatrical, or reimagined framing.
+        Generate 5 high-retention YouTube titles for {channel_name}.
+        Lean into the following tone: {tone}
         Include a one-line angle note under each title.
 
         Topic: {topic}
         Working title: {working_title}
         """,
         "description_tags": f"""
-        Create a YouTube-optimized description and a comma-separated list of SEO tags for Ralskies.
-        Favor music-cover discoverability, artist branding, and dramatic emotional phrasing.
+        Create a YouTube-optimized description and a comma-separated list of SEO tags for {channel_name}.
+        Favor discoverability, artist branding, and phrasing that aligns with: {tone}
         Keep the result clean and skimmable.
 
         Topic context: {topic}
         Working title: {working_title}
         """,
         "hook_pack": f"""
-        Generate 10 opening hooks for a Ralskies video.
-        Make them sound natural, emotionally magnetic, theatrical, and high-retention.
+        Generate 10 opening hooks for a {channel_name} video.
+        Make them sound natural, magnetically engaging, and aligned with: {tone}
 
         Topic: {topic}
         Working title: {working_title}
         """,
         "content_brief": f"""
-        Build a practical YouTube content brief for a Ralskies upload.
-        Include target viewer, emotional promise, thumbnail concept, performance angle, outline, and call to action for the Fanskies.
+        Build a practical YouTube content brief for a {channel_name} upload.
+        Include target viewer, emotional promise, thumbnail concept, performance angle, outline, and call to action for {target_audience}.
 
         Topic: {topic}
         Working title: {working_title}
         """,
         "fan_request_spin": f"""
-        A fan requested this song for Ralskies.
-        Suggest a unique Ralskies spin that transforms it into something theatrical, emotional, or dreamlike.
+        A fan requested this idea for {channel_name}.
+        Suggest a unique spin that aligns with the channel's tone: {tone}
         Include:
         1. Core reinterpretation angle
-        2. Vocal or performance direction
+        2. Performance or visual direction
         3. Thumbnail and title framing
-        4. Why the Fanskies would respond
+        4. Why {target_audience} would respond
 
-        Ko-fi request or song idea: {topic}
+        Request or idea: {topic}
         Working title: {working_title}
         """,
     }

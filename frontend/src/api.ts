@@ -1,4 +1,4 @@
-import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CreatorActionsPayload, IdeationScorePayload, RepertoirePayload, ShortsAiAnalyzePayload, ShortsPreviewPayload, ShortsProjectPayload, ShortsRenderPayload, VaultPayload, YoutubeRefreshPayload } from "./types";
+import type { AnalyticsPayload, BootstrapPayload, ChatMessage, CreatorActionsPayload, IdeationScorePayload, VaultPayload, YoutubeRefreshPayload } from "./types";
 
 export async function loadBootstrap(): Promise<BootstrapPayload> {
   const response = await fetch("/api/bootstrap");
@@ -77,25 +77,7 @@ export function checkLatestYoutubeData(): Promise<YoutubeRefreshPayload> {
   return requestJson("/api/vault/youtube/check-latest", { method: "POST" });
 }
 
-export function loadRepertoire(): Promise<RepertoirePayload> {
-  return requestJson("/api/repertoire");
-}
 
-export function saveRepertoire(rows: Record<string, unknown>[]): Promise<RepertoirePayload> {
-  return requestJson("/api/repertoire", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rows })
-  });
-}
-
-export function coachRepertoire(prompt: string): Promise<{ content: string }> {
-  return requestJson("/api/repertoire/coach", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt })
-  });
-}
 
 export function loadCreatorActions(): Promise<CreatorActionsPayload> {
   return requestJson("/api/creator-actions");
@@ -153,84 +135,4 @@ export function draftUploadTips(upload: Record<string, unknown>, uploadKind: str
   });
 }
 
-export function analyzeShortsWithAi(payload: {
-  mainVideo: File;
-  brollVideo?: File | null;
-  whisperModel: string;
-  layoutMode: string;
-  objective: string;
-  visionModel?: string;
-}): Promise<ShortsAiAnalyzePayload> {
-  const formData = new FormData();
-  formData.append("main_video", payload.mainVideo);
-  if (payload.brollVideo) {
-    formData.append("broll_video", payload.brollVideo);
-  }
-  formData.append("whisper_model", payload.whisperModel);
-  formData.append("layout_mode", payload.layoutMode);
-  formData.append("objective", payload.objective);
-  formData.append("vision_model", payload.visionModel ?? "");
-  return requestJson("/api/shorts/ai-analyze", {
-    method: "POST",
-    body: formData
-  });
-}
 
-export function renderShortsFromAiPlan(payload: {
-  mainVideoPath: string;
-  brollVideoPath?: string;
-  shorts: NonNullable<ShortsAiAnalyzePayload["aiPlan"]["shorts"]>;
-  layoutMode: string;
-  textColor: string;
-}): Promise<ShortsRenderPayload> {
-  return requestJson("/api/shorts/render", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      main_video_path: payload.mainVideoPath,
-      broll_video_path: payload.brollVideoPath ?? "",
-      shorts: payload.shorts,
-      layout_mode: payload.layoutMode,
-      text_color: payload.textColor,
-      add_outline: true
-    })
-  });
-}
-
-export function previewShortsFromAiPlan(payload: {
-  mainVideoPath: string;
-  shorts: NonNullable<ShortsAiAnalyzePayload["aiPlan"]["shorts"]>;
-}): Promise<ShortsPreviewPayload> {
-  return requestJson("/api/shorts/preview-frames", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      main_video_path: payload.mainVideoPath,
-      shorts: payload.shorts
-    })
-  });
-}
-
-export function listShortsProjects(): Promise<{ projects: ShortsProjectPayload[] }> {
-  return requestJson("/api/shorts/projects");
-}
-
-export function loadShortsProject(projectId: string): Promise<{ success: boolean; message: string; project: ShortsProjectPayload | null }> {
-  return requestJson(`/api/shorts/projects/${encodeURIComponent(projectId)}`);
-}
-
-export function saveShortsProject(payload: {
-  id?: string;
-  title: string;
-  payload: ShortsProjectPayload["payload"];
-}): Promise<{ success: boolean; message: string; project: ShortsProjectPayload; projects: ShortsProjectPayload[] }> {
-  return requestJson("/api/shorts/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-}
-
-export function deleteShortsProject(projectId: string): Promise<{ success: boolean; message: string; projects: ShortsProjectPayload[] }> {
-  return requestJson(`/api/shorts/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" });
-}

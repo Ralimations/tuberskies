@@ -40,18 +40,7 @@ STOP_WORDS = {
 }
 
 
-def _safe_calendar_frame(calendar_df: pd.DataFrame) -> pd.DataFrame:
-    if calendar_df is None or calendar_df.empty:
-        return pd.DataFrame(columns=["title", "stage", "priority", "content_pillar", "target_upload_date", "notes"])
-    frame = calendar_df.copy()
-    for column in ["title", "stage", "priority", "content_pillar", "notes"]:
-        if column not in frame.columns:
-            frame[column] = ""
-        frame[column] = frame[column].fillna("").astype(str)
-    if "target_upload_date" not in frame.columns:
-        frame["target_upload_date"] = pd.NaT
-    frame["target_upload_date"] = pd.to_datetime(frame["target_upload_date"], errors="coerce")
-    return frame
+
 
 
 def _safe_analytics_frame(analytics_df: pd.DataFrame) -> pd.DataFrame:
@@ -140,86 +129,36 @@ def _build_publish_memory(analytics_df: pd.DataFrame) -> dict[str, Any]:
         "weak_score": round(float(weak_row["publish_score"]), 1),
         "weekday_rows": weekday_rows,
     }
-
-
-def _build_stage_memory(calendar_df: pd.DataFrame) -> dict[str, Any]:
-    if calendar_df.empty:
-        return {
-            "bottleneck_stage": "No repertoire data",
-            "bottleneck_count": 0,
-            "overdue_count": 0,
-            "stage_rows": [],
-        }
-
-    stage_counts = calendar_df["stage"].value_counts()
-    bottleneck_stage = stage_counts.idxmax() if not stage_counts.empty else "No repertoire data"
-    bottleneck_count = int(stage_counts.max()) if not stage_counts.empty else 0
-    today = pd.Timestamp.today().normalize()
-    overdue_mask = calendar_df["target_upload_date"].notna() & (calendar_df["target_upload_date"] < today) & (calendar_df["stage"] != "Upload")
-    overdue_count = int(overdue_mask.sum())
-    stage_rows = [{"stage": str(stage), "count": int(count)} for stage, count in stage_counts.items()]
-    return {
-        "bottleneck_stage": str(bottleneck_stage),
-        "bottleneck_count": bottleneck_count,
-        "overdue_count": overdue_count,
-        "stage_rows": stage_rows,
-    }
-
-
-def _build_pillar_memory(calendar_df: pd.DataFrame) -> list[dict[str, Any]]:
-    if calendar_df.empty:
-        return []
-    pillar_counts = (
-        calendar_df["content_pillar"]
-        .replace("", pd.NA)
-        .dropna()
-        .astype(str)
-        .value_counts()
-        .head(5)
-    )
-    return [{"pillar": pillar, "count": int(count)} for pillar, count in pillar_counts.items()]
-
-
 def _build_repeat_and_reduce(snapshot: dict[str, Any]) -> tuple[list[str], list[str]]:
     repeat: list[str] = []
     reduce: list[str] = []
 
     publish = snapshot["publish_memory"]
-    stage = snapshot["stage_memory"]
-    pillars = snapshot["pillar_memory"]
     patterns = snapshot["title_patterns"]
 
     if publish["best_score"] is not None:
         repeat.append(f"Prioritize stronger uploads for {publish['best_day']}, your current best-performing weekday.")
-    if pillars:
-        repeat.append(f"Keep leaning into {pillars[0]['pillar']}, which appears most often in your active repertoire.")
     if patterns:
         repeat.append(f"Reuse the framing around '{patterns[0]['pattern']}' when it fits naturally.")
-    if stage["bottleneck_stage"] not in {"No repertoire data", "Upload"}:
-        reduce.append(f"Too many songs are stuck in {stage['bottleneck_stage']}; clear that lane before adding more ideas.")
-    if stage["overdue_count"] > 0:
-        reduce.append(f"{stage['overdue_count']} repertoire items are overdue, so tighten scheduling before expanding the slate.")
     if publish["weak_score"] is not None:
         reduce.append(f"Treat {publish['weak_day']} as a weaker release day unless the upload is especially strong.")
 
     return repeat[:3], reduce[:3]
 
 
+
 def build_pattern_memory_snapshot(
     analytics_df: pd.DataFrame,
-    calendar_df: pd.DataFrame,
+    video_df: pd.DataFrame = None,
     niche_output: str = "",
 ) -> dict[str, Any]:
     safe_analytics = _safe_analytics_frame(analytics_df)
-    safe_calendar = _safe_calendar_frame(calendar_df)
-    titles = [title for title in safe_calendar["title"].tolist() if title.strip()]
+    titles = video_df["title"].dropna().astype(str).tolist() if video_df is not None and not video_df.empty else []
     title_patterns = _extract_title_patterns(titles)
     publish_memory = _build_publish_memory(safe_analytics)
-    stage_memory = _build_stage_memory(safe_calendar)
-    pillar_memory = _build_pillar_memory(safe_calendar)
+    
     fingerprint_source = (
         safe_analytics.fillna("").to_csv(index=False)
-        + safe_calendar.fillna("").to_csv(index=False)
         + niche_output.strip()
     )
     fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()
@@ -228,8 +167,6 @@ def build_pattern_memory_snapshot(
         "fingerprint": fingerprint,
         "title_patterns": title_patterns,
         "publish_memory": publish_memory,
-        "stage_memory": stage_memory,
-        "pillar_memory": pillar_memory,
         "niche_hint": niche_output.strip().splitlines()[0][:140] if niche_output.strip() else "",
     }
     repeat, reduce = _build_repeat_and_reduce(snapshot)
@@ -240,11 +177,11 @@ def build_pattern_memory_snapshot(
 
 def refresh_pattern_memory(
     analytics_df: pd.DataFrame,
-    calendar_df: pd.DataFrame,
+    video_df: pd.DataFrame = None,
     niche_output: str = "",
 ) -> dict[str, Any]:
     memory = load_pattern_memory()
-    snapshot = build_pattern_memory_snapshot(analytics_df, calendar_df, niche_output)
+    snapshot = build_pattern_memory_snapshot(analytics_df, video_df, niche_output)
     latest = memory.get("latest")
     if latest and latest.get("fingerprint") == snapshot["fingerprint"]:
         return memory

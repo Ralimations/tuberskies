@@ -43,7 +43,6 @@ export type BootstrapPayload = {
   patternMemory: Record<string, unknown> | null;
   analyticsRows: Record<string, unknown>[];
   videoRows: Record<string, unknown>[];
-  calendarRows: Record<string, unknown>[];
   messages: Record<string, string>;
   cache: CacheFreshnessRow[];
 };
@@ -59,17 +58,7 @@ export type CacheFreshnessRow = {
   message: string;
 };
 
-export type RepertoirePayload = {
-  rows: Record<string, unknown>[];
-  stages: string[];
-  priorities: string[];
-  summary: {
-    total: number;
-    ready: number;
-    due_soon: number;
-    stage_counts: Record<string, number>;
-  };
-};
+
 
 export type VaultPayload = {
   settings: {
@@ -143,76 +132,4 @@ export type AnalyticsPayload = {
   messages: Record<string, string>;
 };
 
-export type ShortsPlanClip = {
-  segment_id?: number;
-  start?: number;
-  end?: number;
-  title?: string;
-  hook?: string;
-  caption_lines?: string[];
-  reason?: string;
-  score?: number;
-};
 
-export type ShortsAiAnalyzePayload = {
-  success?: boolean;
-  message?: string;
-  warnings?: string[];
-  main_video_path: string;
-  broll_video_path: string;
-  mainVideo?: {
-    filename: string;
-    path: string;
-    duration_seconds: number;
-  };
-  brollVideo?: {
-    filename: string;
-    path: string;
-    duration_seconds: number;
-  };
-  segments: Record<string, unknown>[];
-  transcriptRows: Record<string, unknown>[];
-  visualNotes: string;
-  aiPlan: {
-    video_title?: string;
-    shorts?: ShortsPlanClip[];
-    posting_notes?: string[];
-  };
-  rawModelResponse: string;
-};
-
-export type ShortsRenderPayload = {
-  success: boolean;
-  message: string;
-  outputs: string[];
-};
-
-export type ShortsPreviewPayload = {
-  success: boolean;
-  message: string;
-  frames: {
-    index: number;
-    start: number;
-    end: number;
-    timestamp: number;
-    imageDataUrl: string;
-  }[];
-};
-
-export type ShortsProjectPayload = {
-  id: string;
-  title: string;
-  payload: {
-    result?: ShortsAiAnalyzePayload;
-    editableShorts?: ShortsPlanClip[];
-    renderResult?: ShortsRenderPayload | null;
-    previewResult?: ShortsPreviewPayload | null;
-    layout?: string;
-    captionTone?: string;
-    objective?: string;
-    whisperModel?: string;
-    visionModel?: string;
-  };
-  created_at: string;
-  updated_at: string;
-};

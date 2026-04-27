@@ -8,10 +8,28 @@ from youtube_client import authorize_youtube_analytics, clear_youtube_token, get
 
 
 def render_vault() -> None:
-    render_section_header("Infrastructure", "The Vault", "Store defaults, model preferences, and future API credentials locally so the studio stays private, reusable, and aligned with Ralskies and A.R.I.A.")
+    render_section_header("Infrastructure", "The Vault", "Store defaults, model preferences, and future API credentials locally so the studio stays private, reusable, and aligned with A.R.I.A.")
     vault = st.session_state.vault_settings
     connection = get_connection_status(vault)
     token_ready = has_saved_token()
+
+    render_panel_header("Creator Profile Manager", "Manage active creator profiles to tailor AI strategy coaching.")
+    active_profile_choice = vault.get("ACTIVE_PROFILE", "Ralskies (Default)")
+    active_profile = st.selectbox("Active Profile", ["Ralskies (Default)", "New User"], index=0 if active_profile_choice == "Ralskies (Default)" else 1)
+    
+    if active_profile == "Ralskies (Default)":
+        channel_name = st.text_input("Channel Name", value="Ralskies", disabled=True)
+        niche = st.text_area("Niche", value="Theatrical covers like Epic the Musical and Hazbin Hotel, plus dreamy original songs", disabled=True)
+        target_audience = st.text_input("Target Audience", value="Fanskies", disabled=True)
+        tone = st.text_input("Tone", value="Emotional, dramatic, reimagined, and story-driven.", disabled=True)
+    else:
+        is_new = active_profile_choice != "New User"
+        channel_name = st.text_input("Channel Name", value="" if is_new else vault.get("CHANNEL_NAME", ""))
+        niche = st.text_area("Niche", value="" if is_new else vault.get("NICHE", ""))
+        target_audience = st.text_input("Target Audience", value="" if is_new else vault.get("TARGET_AUDIENCE", ""))
+        tone = st.text_input("Tone", value="" if is_new else vault.get("TONE", ""))
+
+    st.divider()
 
     left, right = st.columns([1.35, 0.85])
     with left:
@@ -56,6 +74,11 @@ def render_vault() -> None:
             "YOUTUBE_CLIENT_SECRET": youtube_client_secret,
             "MODEL_NAME": model_name,
             "MODEL_ENDPOINT": model_endpoint,
+            "ACTIVE_PROFILE": active_profile,
+            "CHANNEL_NAME": channel_name,
+            "NICHE": niche,
+            "TARGET_AUDIENCE": target_audience,
+            "TONE": tone,
         }
         save_vault_settings(updated)
         st.session_state.vault_settings = load_vault_settings()

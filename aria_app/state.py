@@ -22,20 +22,6 @@ def initialize_state() -> None:
         st.session_state.niche_last_action = "No generation yet."
     if "calendar_coach_output" not in st.session_state:
         st.session_state.calendar_coach_output = ""
-    if "calendar_coach_context" not in st.session_state:
-        st.session_state.calendar_coach_context = "No repertoire coaching run yet."
-    if "transcription_data" not in st.session_state:
-        st.session_state.transcription_data = None
-    if "shorts_segments" not in st.session_state:
-        st.session_state.shorts_segments = []
-    if "shorts_main_video_path" not in st.session_state:
-        st.session_state.shorts_main_video_path = ""
-    if "shorts_broll_video_path" not in st.session_state:
-        st.session_state.shorts_broll_video_path = ""
-    if "shorts_outputs" not in st.session_state:
-        st.session_state.shorts_outputs = []
-    if "shorts_analysis_error" not in st.session_state:
-        st.session_state.shorts_analysis_error = ""
     if "youtube_auth_notice" not in st.session_state:
         st.session_state.youtube_auth_notice = ""
     if "coach_response_style" not in st.session_state:
@@ -46,10 +32,6 @@ def initialize_state() -> None:
         st.session_state.aria_analytics_chat = []
     if "command_center_section" not in st.session_state:
         st.session_state.command_center_section = "Dashboard"
-    if "repertoire_section" not in st.session_state:
-        st.session_state.repertoire_section = "Idea Board"
-    if "shorts_section" not in st.session_state:
-        st.session_state.shorts_section = "Ingest"
     if "upload_lab_section" not in st.session_state:
         st.session_state.upload_lab_section = "Summary"
     if "momentum_workspace_section" not in st.session_state:

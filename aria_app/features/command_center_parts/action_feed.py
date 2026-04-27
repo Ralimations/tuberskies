@@ -84,9 +84,9 @@ def build_action_feed_cards(
                 "title": f"Move {focus_title} forward",
                 "age": "today",
                 "body": today_payload.get("focus_reason", "This is the cleanest production move for today."),
-                "tags": [("Focus", "Repertoire"), ("Next Step", "Ready")],
-                "cta": "Open Repertoire",
-                "href": _href({"view": "Repertoire", "repertoire_section": "Idea Board"}),
+                "tags": [("Focus", "Action"), ("Next Step", "Ready")],
+                "cta": "Open Creator Actions",
+                "href": _href({"view": "Creator Actions"}),
             }
         )
     else:
@@ -97,8 +97,8 @@ def build_action_feed_cards(
                 "age": "setup",
                 "body": "A.R.I.A. needs at least one current song or cover idea before it can rank the best next production move.",
                 "tags": [("Pipeline", "Empty"), ("Action", "Add Song")],
-                "cta": "Open Repertoire",
-                "href": _href({"view": "Repertoire", "repertoire_section": "Idea Board"}),
+                "cta": "Open Niche Lab",
+                "href": _href({"view": "Niche Lab"}),
             }
         )
 
@@ -177,37 +177,12 @@ def build_action_feed_cards(
             }
         )
 
-    priority_row = _best_calendar_row(calendar_df)
-    if priority_row is not None and str(priority_row.get("stage", "")) in {"Upload", "Video Editing", "BandLab Recording"}:
-        cards.append(
-            {
-                "category": "Shorts",
-                "title": "Turn the next performance into Shorts",
-                "age": "repurpose",
-                "body": f"{priority_row.get('title', 'Your next release')} is far enough along to prepare vertical clips or captions.",
-                "tags": [("Format", "Shorts"), ("Stage", priority_row.get("stage", "Active"))],
-                "cta": "Open Shorts Architect",
-                "href": _href({"view": "Shorts Architect", "shorts_section": "Ingest"}),
-            }
-        )
-    else:
-        cards.append(
-            {
-                "category": "Shorts",
-                "title": "Queue a performance for Shorts clipping",
-                "age": "repurpose",
-                "body": "Upload a long-form performance when ready, then let A.R.I.A. detect high-energy moments and build captioned vertical exports.",
-                "tags": [("Format", "9:16"), ("Captions", "Whisper")],
-                "cta": "Open Shorts Architect",
-                "href": _href({"view": "Shorts Architect", "shorts_section": "Ingest"}),
-            }
-        )
 
     return cards[:9]
 
 
 def render_action_feed(cards: list[dict[str, object]]) -> None:
-    categories = ["All", "Optimization", "Research", "Analytics", "Production", "Shorts"]
+    categories = ["All", "Optimization", "Research", "Analytics", "Production"]
     active_filter = st.segmented_control(
         "Action feed filter",
         options=categories,
