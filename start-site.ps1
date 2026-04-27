@@ -135,8 +135,7 @@ if (-not $nodeCommand) {
     $StartedOk = $false
 }
 
-    Write-Host "Skipping A.R.I.A. model warmup." -ForegroundColor DarkGray
-}
+Write-Host "Skipping A.R.I.A. model warmup." -ForegroundColor DarkGray
 
 if (-not (Test-Port -Port $ApiPort)) {
     Write-Host "Starting FastAPI backend on http://127.0.0.1:$ApiPort ..." -ForegroundColor Yellow

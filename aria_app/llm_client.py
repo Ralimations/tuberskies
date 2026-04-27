@@ -10,3 +10,7 @@ def get_llm_client() -> OpenAI:
 def get_model_name() -> str:
     settings = load_vault_settings()
     return settings.get("MODEL_NAME") or settings.get("model_name") or "google/gemma-4-e2b"
+
+def is_custom_api(endpoint: str) -> bool:
+    """Detects if the endpoint is a custom API that uses the (model, system_prompt, input) format."""
+    return "/api/v1/chat" in endpoint or "10.8.0.3" in endpoint

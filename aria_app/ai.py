@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import textwrap
+import requests
 from typing import Iterable
 
-from .llm_client import get_llm_client
+from .llm_client import get_llm_client, is_custom_api, get_model_name
 
 
 ARIA_SYSTEM_PROMPT = (
@@ -42,6 +43,26 @@ def stream_aria_response(
             system_prompt = f"{system_prompt}\n\n{build_upload_history_context(upload_takeaways)}"
         
         client = get_llm_client()
+        url_str = str(client.base_url)
+        if is_custom_api(url_str):
+            # The custom API endpoint is exactly the URL provided in MODEL_ENDPOINT
+            target_url = url_str.rstrip("/") 
+            response = requests.post(
+                target_url,
+                json={
+                    "model": get_model_name(),
+                    "system_prompt": system_prompt,
+                    "input": prompt,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            # If the custom API returns a direct string or a dict with 'response' key
+            content = payload.get("response") or payload.get("content") or str(payload)
+            yield str(content)
+            return
+
         stream = client.chat.completions.create(
             model=model,
             messages=[
