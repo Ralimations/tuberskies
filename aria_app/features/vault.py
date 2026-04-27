@@ -21,11 +21,8 @@ def render_vault() -> None:
         else:
             st.info(connection.message)
         default_description = st.text_area("Default Description", value=vault.get("default_description", ""), height=220, placeholder="Standard links, music platform URLs, Discord, and gear list...")
-        ollama_model = st.selectbox(
-            "Local LLM Model",
-            options=["gemma", "gemma:7b", "llama3:8b", "gemma4:e2b"],
-            index=["gemma", "gemma:7b", "llama3:8b", "gemma4:e2b"].index(vault.get("ollama_model", "gemma")) if vault.get("ollama_model", "gemma") in ["gemma", "gemma:7b", "llama3:8b", "gemma4:e2b"] else 0,
-        )
+        model_name = st.text_input("Model Name", value=vault.get("MODEL_NAME", "google/gemma-4-e2b"))
+        model_endpoint = st.text_input("Model Endpoint", value=vault.get("MODEL_ENDPOINT", "http://127.0.0.1:3010/v1"))
         render_editorial_list(
             "YouTube Auth State",
             [
@@ -57,7 +54,8 @@ def render_vault() -> None:
             "YOUTUBE_API_KEY": youtube_api_key,
             "YOUTUBE_CLIENT_ID": youtube_client_id,
             "YOUTUBE_CLIENT_SECRET": youtube_client_secret,
-            "OLLAMA_MODEL": ollama_model,
+            "MODEL_NAME": model_name,
+            "MODEL_ENDPOINT": model_endpoint,
         }
         save_vault_settings(updated)
         st.session_state.vault_settings = load_vault_settings()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import textwrap
 from typing import Iterable
 
-import ollama
+from .llm_client import get_llm_client
 
 
 ARIA_SYSTEM_PROMPT = (
@@ -24,7 +24,7 @@ RESPONSE_STYLE_INSTRUCTIONS = {
 }
 
 
-def stream_ollama_response(
+def stream_aria_response(
     prompt: str,
     model: str,
     response_style: str = "Concise",
@@ -40,7 +40,9 @@ def stream_ollama_response(
             system_prompt = f"{system_prompt}\n\n{build_pattern_memory_context(pattern_snapshot)}"
         if upload_takeaways:
             system_prompt = f"{system_prompt}\n\n{build_upload_history_context(upload_takeaways)}"
-        stream = ollama.chat(
+        
+        client = get_llm_client()
+        stream = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -49,11 +51,11 @@ def stream_ollama_response(
             stream=True,
         )
         for chunk in stream:
-            content = chunk.get("message", {}).get("content", "")
+            content = chunk.choices[0].delta.content
             if content:
                 yield content
     except Exception as error:  # pragma: no cover
-        yield f"Local Ollama request failed: {error}"
+        yield f"Local model request failed: {error}"
 
 
 def build_pattern_memory_context(pattern_snapshot: dict[str, object]) -> str:

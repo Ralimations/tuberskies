@@ -762,8 +762,8 @@ def load_vault_settings() -> dict[str, str]:
         "youtube_api_key": str(values.get("YOUTUBE_API_KEY", "")),
         "youtube_client_id": str(values.get("YOUTUBE_CLIENT_ID", "")),
         "youtube_client_secret": str(values.get("YOUTUBE_CLIENT_SECRET", "")),
-        "ollama_model": str(values.get("OLLAMA_MODEL", "gemma")),
-        "ollama_vision_model": str(values.get("OLLAMA_VISION_MODEL", "")),
+        "MODEL_NAME": str(values.get("MODEL_NAME", "google/gemma-4-e2b")),
+        "MODEL_ENDPOINT": str(values.get("MODEL_ENDPOINT", "http://127.0.0.1:3010/v1")),
     }
 
 

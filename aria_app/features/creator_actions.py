@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from aria_app.ai import stream_ollama_response
+from aria_app.ai import stream_aria_response
 from aria_app.ui import render_editorial_list, render_panel_header, render_section_header
 from youtube_cache import cached_video_performance
 from youtube_client import (
@@ -92,7 +92,7 @@ def _render_metadata_actions(video_df: pd.DataFrame | None) -> None:
             """
         ).strip()
         with st.chat_message("assistant"):
-            response = st.write_stream(stream_ollama_response(prompt, st.session_state.vault_settings.get("ollama_model", "gemma")))
+            response = st.write_stream(stream_aria_response(prompt, st.session_state.vault_settings.get("ollama_model", "gemma")))
         st.session_state.creator_metadata_ai_draft = response or ""
 
     if st.session_state.get("creator_metadata_status"):

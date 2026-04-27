@@ -5,7 +5,7 @@ import textwrap
 import pandas as pd
 import streamlit as st
 
-from aria_app.ai import stream_ollama_response
+from aria_app.ai import stream_aria_response
 from aria_app.pattern_memory import refresh_pattern_memory
 from aria_app.ui import render_editorial_list, render_insight_card, render_panel_header, render_status_strip
 from aria_app.features.command_center_parts.analytics import (
@@ -186,7 +186,7 @@ def render_command_center() -> None:
                     """
                 ).strip()
                 with st.chat_message("assistant"):
-                    st.write_stream(stream_ollama_response(prompt, model))
+                    st.write_stream(stream_aria_response(prompt, model))
         return
 
     if active_section == "Pattern Memory":

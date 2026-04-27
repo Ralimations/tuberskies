@@ -7,7 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-import ollama
+from openai import OpenAI
 import pandas as pd
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from aria_app.ai import build_coach_prompt
+from aria_app.llm_client import get_llm_client
 from aria_app.features.command_center_parts.analytics import (
     build_channel_audit_rows,
     build_creator_hero_stats,
@@ -27,7 +28,7 @@ from aria_app.features.command_center_parts.keyword_tools import build_keyword_o
 from aria_app.features.command_center_parts.upload_metrics import build_upload_takeaways
 from aria_app.pattern_memory import refresh_pattern_memory
 from mock_data import generate_analytics_data
-from shorts_architect import SHORTS_OUTPUT_DIR, SHORTS_WORKDIR, analyze_video_pipeline, preview_shorts_frames, render_ai_shorts, sample_video_frames, save_uploaded_bytes
+from shorts_architect import SHORTS_OUTPUT_DIR, SHORTS_WORKDIR, analyze_video_pipeline, preview_shorts_frames, render_ai_shorts, sample_segment_frames, sample_video_frames, save_uploaded_bytes
 from storage import (
     PRIORITIES,
     STAGES,
@@ -119,8 +120,8 @@ class VaultSettingsRequest(BaseModel):
     youtube_api_key: str = ""
     youtube_client_id: str = ""
     youtube_client_secret: str = ""
-    ollama_model: str = "gemma"
-    ollama_vision_model: str = ""
+    model_name: str = "google/gemma-4-e2b"
+    model_endpoint: str = "http://127.0.0.1:3010/v1"
 
 
 class CalendarRow(BaseModel):
@@ -210,28 +211,12 @@ def _log_action(action: str, payload: dict[str, object]) -> None:
         handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def _model_name(model: Any) -> str:
-    if isinstance(model, dict):
-        return str(model.get("model") or model.get("name") or "").strip()
-    return str(getattr(model, "model", "") or getattr(model, "name", "") or "").strip()
-
-
-def _list_ollama_models() -> list[str]:
-    try:
-        response = ollama.list()
-    except Exception:
-        return []
-    models = response.get("models", []) if isinstance(response, dict) else getattr(response, "models", [])
-    return sorted({_model_name(model) for model in models if _model_name(model)})
+def _get_client() -> OpenAI:
+    return get_llm_client()
 
 
 def _is_known_free_vision_model(model_name: str) -> bool:
-    clean_name = model_name.lower().split(":")[0]
-    return any(clean_name == prefix or model_name.lower().startswith(f"{prefix}:") for prefix in VISION_MODEL_PREFIXES)
-
-
-def _list_free_vision_models(installed_models: list[str]) -> list[str]:
-    return [model for model in installed_models if _is_known_free_vision_model(model)]
+    return True  # LM Studio model choice is user-driven
 
 
 def _resolve_shorts_path(raw_path: str, allow_empty: bool = False) -> Path | None:
@@ -574,21 +559,25 @@ def _frame_visual_notes(frame_paths: list[Path], vision_model: str) -> str:
     if not frame_paths or not vision_model.strip():
         return "No visual model was provided, so this run uses audio, transcript, and timing signals only."
     try:
-        images = [base64.b64encode(path.read_bytes()).decode("ascii") for path in frame_paths[:6]]
-        response = ollama.chat(
+        client = _get_client()
+        images = []
+        for path in frame_paths[:6]:
+            b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+            images.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        
+        response = client.chat.completions.create(
             model=vision_model.strip(),
             messages=[
                 {
                     "role": "user",
-                    "content": (
-                        "These are sampled frames from a music performance video. "
-                        "Describe visual energy, framing, facial/performance intensity, and any moments that may work as Shorts."
-                    ),
-                    "images": images,
+                    "content": [
+                        {"type": "text", "text": "These are sampled frames from a high-energy music performance by Ralskies. Analyze the visual intensity, performance energy (vocal/instrumental focus), framing quality, and lighting. Identify specific segments that feel 'Shorts-worthy' due to visual flair, emotional peaks, or unique performance moments."},
+                        *images,
+                    ],
                 }
             ],
         )
-        content = str(response.get("message", {}).get("content", "")).strip()
+        content = str(response.choices[0].message.content or "").strip()
         return content or "The visual model returned no visual notes."
     except Exception as error:
         return f"Visual pass skipped: {error}"
@@ -617,7 +606,10 @@ def _build_ai_shorts_prompt(
         Requested layout: {layout_mode}
         Objective: {objective}
 
-        Detected high-energy windows:
+        A.R.I.A. Visual Pass Analysis:
+        {visual_notes}
+
+        Detected high-energy windows (Audio Signals):
         {json.dumps(segments, indent=2)}
 
         Transcript rows:
@@ -643,7 +635,9 @@ def _build_ai_shorts_prompt(
           ],
           "posting_notes": ["note about title, pinned comment, or sequencing"]
         }}
-        Keep captions natural for music. Prefer emotional, theatrical, high-retention hooks.
+        Keep captions natural for music. Prefer emotional, theatrical, high-retention hooks. 
+        IMPORTANT: Cross-reference the detected high-energy audio windows with the Visual Pass Analysis. 
+        If the visual analysis highlights specific 'Shorts-worthy' moments, prioritize those segments in your cut plan.
         """
     ).strip()
 
@@ -729,6 +723,16 @@ def _shorts_error_message(error: Exception, stage: str) -> str:
     if "model" in lower and ("whisper" in lower or "download" in lower):
         return f"{stage} could not load the selected Whisper model. Try the tiny or base model first, or use the future model-download setting once we add it."
     return f"{stage} failed: {text}"
+
+
+def _video_runtime_seconds(video_path: Path | None) -> float:
+    if video_path is None or not video_path.exists():
+        return 0.0
+
+    from moviepy.editor import VideoFileClip
+
+    with VideoFileClip(str(video_path)) as clip:
+        return round(float(clip.duration or 0.0), 2)
 
 
 def _chat_context(payload: dict[str, Any]) -> str:
@@ -867,7 +871,8 @@ def _small_talk_response(message: str) -> str | None:
 
 def _assistant_response(prompt: str, model: str) -> str:
     try:
-        response = ollama.chat(
+        client = _get_client()
+        response = client.chat.completions.create(
             model=model,
             messages=[
                 {
@@ -877,14 +882,15 @@ def _assistant_response(prompt: str, model: str) -> str:
                 {"role": "user", "content": prompt},
             ],
         )
-        return str(response.get("message", {}).get("content", "")).strip()
+        return str(response.choices[0].message.content or "").strip()
     except Exception as error:  # pragma: no cover
-        return f"Local Ollama request failed: {error}"
+        return f"Local model request failed: {error}"
 
 
 def _stream_assistant_response(prompt: str, model: str):
     try:
-        stream = ollama.chat(
+        client = _get_client()
+        stream = client.chat.completions.create(
             model=model,
             messages=[
                 {
@@ -896,11 +902,11 @@ def _stream_assistant_response(prompt: str, model: str):
             stream=True,
         )
         for chunk in stream:
-            content = chunk.get("message", {}).get("content", "")
+            content = chunk.choices[0].delta.content
             if content:
                 yield content
     except Exception as error:  # pragma: no cover
-        yield f"Local Ollama request failed: {error}"
+        yield f"Local model request failed: {error}"
 
 
 @app.get("/api/health")
@@ -1052,7 +1058,7 @@ def draft_upload_lab_tips(request: UploadTipsRequest) -> dict[str, str]:
         {json.dumps(request.upload, indent=2, ensure_ascii=False)}
         """
     ).strip()
-    response = _assistant_response(prompt, settings.get("ollama_model", "gemma"))
+    response = _assistant_response(prompt, settings.get("model_name", "google/gemma-4-e2b"))
     return {"content": response or "A.R.I.A. could not draft upload tips right now."}
 
 
@@ -1060,11 +1066,9 @@ def draft_upload_lab_tips(request: UploadTipsRequest) -> dict[str, str]:
 def vault() -> dict[str, Any]:
     settings = load_vault_settings()
     status = get_connection_status(settings)
-    ollama_models = _list_ollama_models()
     return {
         "settings": settings,
-        "ollama_models": ollama_models,
-        "ollama_vision_models": _list_free_vision_models(ollama_models),
+        "available_models": [settings.get("model_name", "google/gemma-4-e2b")],
         "recommended_free_vision_models": FREE_VISION_MODELS,
         "connection": {
             "api_key": bool(settings.get("youtube_api_key", "").strip()),
@@ -1085,8 +1089,8 @@ def save_vault(request: VaultSettingsRequest) -> dict[str, Any]:
             "YOUTUBE_API_KEY": request.youtube_api_key,
             "YOUTUBE_CLIENT_ID": request.youtube_client_id,
             "YOUTUBE_CLIENT_SECRET": request.youtube_client_secret,
-            "OLLAMA_MODEL": request.ollama_model,
-            "OLLAMA_VISION_MODEL": request.ollama_vision_model,
+            "MODEL_NAME": request.model_name,
+            "MODEL_ENDPOINT": request.model_endpoint,
         }
     )
     return vault()
@@ -1261,6 +1265,8 @@ def analyze_shorts_with_ai(
         "warnings": warnings,
         "main_video_path": "",
         "broll_video_path": "",
+        "mainVideo": {"filename": "", "path": "", "duration_seconds": 0.0},
+        "brollVideo": {"filename": "", "path": "", "duration_seconds": 0.0},
         "segments": [],
         "transcriptRows": [],
         "visualNotes": "",
@@ -1269,18 +1275,24 @@ def analyze_shorts_with_ai(
     }
     try:
         settings = load_vault_settings()
-        active_vision_model = vision_model.strip() or settings.get("ollama_vision_model", "").strip()
+        active_vision_model = vision_model.strip() or settings.get("model_name", "").strip()
         main_path = save_uploaded_bytes(main_video.filename or "main_video.mp4", main_video.file.read(), "main_video")
         broll_path = (
             save_uploaded_bytes(broll_video.filename or "broll_video.mp4", broll_video.file.read(), "broll_video")
             if broll_video is not None
             else None
         )
+        main_runtime = _video_runtime_seconds(main_path)
+        broll_runtime = _video_runtime_seconds(broll_path)
         segments, transcript_df = analyze_video_pipeline(main_path, whisper_model=whisper_model)
         if transcript_df.attrs.get("warning"):
             warnings.append(str(transcript_df.attrs["warning"]))
         try:
-            frame_paths = sample_video_frames(main_path, frame_count=6)
+            # Smart sampling: get frames from the actual high-energy segments
+            frame_paths = sample_segment_frames(main_path, segments)
+            # If no segments or sampling failed, fall back to uniform sampling
+            if not frame_paths:
+                frame_paths = sample_video_frames(main_path, frame_count=6)
         except Exception as error:
             frame_paths = []
             warnings.append(_shorts_error_message(error, "Visual frame sampling"))
@@ -1295,7 +1307,7 @@ def analyze_shorts_with_ai(
             objective=objective,
             visual_notes=visual_notes,
         )
-        model = settings.get("ollama_model", "gemma")
+        model = settings.get("model_name", "google/gemma-4-e2b")
         raw_response = _assistant_response(prompt, model)
         parsed_plan = _extract_json_object(raw_response)
         if parsed_plan is None:
@@ -1319,6 +1331,16 @@ def analyze_shorts_with_ai(
                 "warnings": warnings,
                 "main_video_path": str(main_path),
                 "broll_video_path": str(broll_path) if broll_path else "",
+                "mainVideo": {
+                    "filename": main_video.filename or main_path.name,
+                    "path": str(main_path),
+                    "duration_seconds": main_runtime,
+                },
+                "brollVideo": {
+                    "filename": broll_video.filename if broll_video else "",
+                    "path": str(broll_path) if broll_path else "",
+                    "duration_seconds": broll_runtime,
+                },
                 "segments": segments,
                 "transcriptRows": transcript_df,
                 "visualNotes": visual_notes,

@@ -1175,8 +1175,7 @@ function VaultPage() {
     if (!settings) return;
     setStatus("Saving vault...");
     try {
-      const selectedVisionModel = payload?.ollama_vision_models.includes(settings.ollama_vision_model) ? settings.ollama_vision_model : "";
-      const result = await saveVault({ ...settings, ollama_vision_model: selectedVisionModel });
+      const result = await saveVault({ ...settings });
       setPayload(result);
       setSettings(result.settings);
       setStatus("Vault settings saved.");
@@ -1290,18 +1289,8 @@ function VaultPage() {
       <Panel title="Settings">
         {settings ? (
           <div className="form-grid">
-            <label className="field"><span>Ollama Model</span><input value={settings.ollama_model} onChange={(event) => updateSetting("ollama_model", event.target.value)} /></label>
-            <label className="field">
-              <span>Ollama Vision Model</span>
-              <select
-                value={payload?.ollama_vision_models.includes(settings.ollama_vision_model) ? settings.ollama_vision_model : ""}
-                onChange={(event) => updateSetting("ollama_vision_model", event.target.value)}
-                disabled={!payload?.ollama_vision_models.length}
-              >
-                <option value="">{payload?.ollama_vision_models.length ? "Visual pass off" : "No local free vision models found"}</option>
-                {payload?.ollama_vision_models.map((model) => <option value={model} key={model}>{model}</option>)}
-              </select>
-            </label>
+            <label className="field"><span>Model Name</span><input value={settings.model_name} onChange={(event) => updateSetting("model_name", event.target.value)} /></label>
+            <label className="field"><span>Model Endpoint</span><input value={settings.model_endpoint} onChange={(event) => updateSetting("model_endpoint", event.target.value)} /></label>
             <label className="field"><span>Default Description</span><textarea value={settings.default_description} onChange={(event) => updateSetting("default_description", event.target.value)} rows={8} /></label>
             <label className="field"><span>YouTube API Key</span><input type="password" value={settings.youtube_api_key} onChange={(event) => updateSetting("youtube_api_key", event.target.value)} /></label>
             <label className="field"><span>YouTube Client ID</span><input type="password" value={settings.youtube_client_id} onChange={(event) => updateSetting("youtube_client_id", event.target.value)} /></label>
@@ -1318,7 +1307,7 @@ function ShortsArchitectPage() {
   const [mainVideo, setMainVideo] = useState<File | null>(null);
   const [brollVideo, setBrollVideo] = useState<File | null>(null);
   const [vaultSettings, setVaultSettings] = useState<VaultPayload["settings"] | null>(null);
-  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [layout, setLayout] = useStoredState("aria_shorts_layout", "Solo Mode");
   const [captionTone, setCaptionTone] = useStoredState("aria_shorts_caption_tone", "#ffd166");
   const [objective, setObjective] = useStoredState("aria_shorts_objective", "Retention hook");
@@ -1339,8 +1328,22 @@ function ShortsArchitectPage() {
   const [projectBusy, setProjectBusy] = useState(false);
   const aiShorts = editableShorts;
   const activeVisionModel = visionModel.trim();
-  const hasInvalidCuts = aiShorts.some((clip) => Number(clip.end ?? 0) <= Number(clip.start ?? 0));
+  const mainVideoDuration = Number(result?.mainVideo?.duration_seconds ?? 0);
+  const brollVideoDuration = Number(result?.brollVideo?.duration_seconds ?? 0);
+  const invalidCutCount = aiShorts.filter((clip) => {
+    const start = Number(clip.start ?? 0);
+    const end = Number(clip.end ?? 0);
+    if (!(end > start)) return true;
+    if (mainVideoDuration > 0 && end > mainVideoDuration) return true;
+    return false;
+  }).length;
+  const hasInvalidCuts = invalidCutCount > 0;
   const duetMissingBroll = layout === "Duet Mode" && !result?.broll_video_path;
+  const duetCutsExceedBroll = layout === "Duet Mode" && brollVideoDuration > 0 && aiShorts.some((clip) => {
+    const start = Number(clip.start ?? 0);
+    const end = Number(clip.end ?? 0);
+    return end > start && (end - start) > brollVideoDuration;
+  });
   const previewFramesByIndex = useMemo(
     () => new Map((previewResult?.frames ?? []).map((frame) => [frame.index, frame])),
     [previewResult]
@@ -1350,15 +1353,15 @@ function ShortsArchitectPage() {
     loadVault()
       .then((payload) => {
         setVaultSettings(payload.settings);
-        setOllamaModels(payload.ollama_vision_models);
+        setAvailableModels(payload.available_models);
         setVisionModel((current) => {
-          if (current && payload.ollama_vision_models.includes(current)) return current;
-          return payload.ollama_vision_models.includes(payload.settings.ollama_vision_model) ? payload.settings.ollama_vision_model : "";
+          if (current && payload.available_models.includes(current)) return current;
+          return payload.available_models.includes(payload.settings.model_name) ? payload.settings.model_name : (payload.available_models[0] || "");
         });
       })
       .catch(() => {
         setVaultSettings(null);
-        setOllamaModels([]);
+        setAvailableModels([]);
       });
   }, []);
 
@@ -1422,6 +1425,37 @@ function ShortsArchitectPage() {
     setPreviewResult(null);
   }
 
+  function duplicateShort(index: number) {
+    setEditableShorts((current) => {
+      const clip = current[index];
+      if (!clip) return current;
+      const duplicate = {
+        ...clip,
+        title: clip.title ? `${clip.title} Copy` : `Cut ${index + 1} Copy`,
+      };
+      return [...current.slice(0, index + 1), duplicate, ...current.slice(index + 1)];
+    });
+    setPreviewResult(null);
+  }
+
+  function addManualCut() {
+    setEditableShorts((current) => [
+      ...current,
+      {
+        segment_id: current.length + 1,
+        start: 0,
+        end: 15,
+        title: `Manual Cut ${current.length + 1}`,
+        hook: "Start with the strongest lyric or beat drop",
+        caption_lines: ["Hook line", "Payoff line"],
+        reason: "Manual cut added in Shorts Architect.",
+        score: 60,
+      }
+    ]);
+    setPreviewResult(null);
+    setStatus("Added a manual cut. Adjust the timing before preview or render.");
+  }
+
   function restoreAiPlan() {
     setEditableShorts(result?.aiPlan?.shorts ?? []);
     setRenderResult(null);
@@ -1441,7 +1475,7 @@ function ShortsArchitectPage() {
           result,
           editableShorts,
           renderResult,
-          previewResult: null,
+          previewResult,
           layout,
           captionTone,
           objective,
@@ -1483,6 +1517,9 @@ function ShortsArchitectPage() {
       setWhisperModel(payload.whisperModel ?? "small");
       setVisionModel(payload.visionModel ?? "");
       setStatus(loaded.message);
+      if (!payload.previewResult?.frames?.length && payload.result?.main_video_path && (payload.editableShorts ?? payload.result?.aiPlan?.shorts ?? []).length) {
+        refreshCutPreviews(payload.result.main_video_path, payload.editableShorts ?? payload.result.aiPlan?.shorts ?? []);
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not open Shorts project.");
     } finally {
@@ -1527,7 +1564,7 @@ function ShortsArchitectPage() {
   }
 
   async function renderAiPlan() {
-    if (!result || !aiShorts.length || hasInvalidCuts || duetMissingBroll || rendering) return;
+    if (!result || !aiShorts.length || hasInvalidCuts || duetMissingBroll || duetCutsExceedBroll || rendering) return;
     setRendering(true);
     setStatus("Rendering the AI-selected Shorts into local MP4 exports...");
     try {
@@ -1581,6 +1618,20 @@ function ShortsArchitectPage() {
               <button disabled={!result || projectBusy} onClick={saveCurrentProject}>{projectBusy ? "Working..." : "Save Project"}</button>
               <button disabled={!projectId || projectBusy} onClick={removeCurrentProject}>Delete Saved Project</button>
             </div>
+            {result ? (
+              <div className="shorts-source-summary">
+                <div className="source-chip">
+                  <strong>Main Video</strong>
+                  <span>{result.mainVideo?.filename || result.main_video_path.split(/[\\/]/).pop() || "Uploaded video"}</span>
+                  <small>{mainVideoDuration ? `${mainVideoDuration.toFixed(1)}s loaded` : "Duration unavailable"}</small>
+                </div>
+                <div className="source-chip">
+                  <strong>B-Roll</strong>
+                  <span>{result.brollVideo?.filename || (result.broll_video_path ? result.broll_video_path.split(/[\\/]/).pop() : "Not loaded")}</span>
+                  <small>{brollVideoDuration ? `${brollVideoDuration.toFixed(1)}s loaded` : "Optional for Solo Mode"}</small>
+                </div>
+              </div>
+            ) : null}
             <label className="field">
               <span>Main Performance Video</span>
               <input type="file" accept="video/*" onChange={(event) => setMainVideo(event.target.files?.[0] ?? null)} />
@@ -1608,9 +1659,9 @@ function ShortsArchitectPage() {
             </label>
             <label className="field">
               <span>Vision Model</span>
-              <select value={visionModel} onChange={(event) => setVisionModel(event.target.value)} disabled={!ollamaModels.length}>
-                <option value="">{ollamaModels.length ? "Visual pass off" : "No local Ollama models found"}</option>
-                {ollamaModels.map((model) => <option value={model} key={model}>{model}</option>)}
+              <select value={visionModel} onChange={(event) => setVisionModel(event.target.value)} disabled={!availableModels.length}>
+                <option value="">{availableModels.length ? "Visual pass off" : "No models found"}</option>
+                {availableModels.map((model) => <option value={model} key={model}>{model}</option>)}
               </select>
             </label>
             <div className="swatch-row">
@@ -1627,7 +1678,7 @@ function ShortsArchitectPage() {
             <button className="primary" disabled={!mainVideo || analyzing} onClick={runAiDirector}>
               {analyzing ? "A.R.I.A. Is Directing..." : "Let A.R.I.A. Create The Shorts"}
             </button>
-            <button disabled={!aiShorts.length || hasInvalidCuts || duetMissingBroll || rendering || analyzing} onClick={renderAiPlan}>
+            <button disabled={!aiShorts.length || hasInvalidCuts || duetMissingBroll || duetCutsExceedBroll || rendering || analyzing} onClick={renderAiPlan}>
               {rendering ? "Rendering MP4s..." : "Render AI Plan"}
             </button>
           </div>
@@ -1644,12 +1695,23 @@ function ShortsArchitectPage() {
       </div>
       <Panel title="AI-Selected Cuts">
         <div className="clip-editor-topline">
-          <span>{hasInvalidCuts ? "Fix cut timing before render" : duetMissingBroll ? "Duet Mode needs B-Roll before render" : aiShorts.length ? `${aiShorts.length} editable cut(s)` : "No cuts selected yet"}</span>
+          <span>
+            {hasInvalidCuts
+              ? `${invalidCutCount} cut(s) need timing fixes before render`
+              : duetMissingBroll
+                ? "Duet Mode needs B-Roll before render"
+                : duetCutsExceedBroll
+                  ? "At least one cut is longer than the loaded B-Roll"
+                  : aiShorts.length
+                    ? `${aiShorts.length} editable cut(s)`
+                    : "No cuts selected yet"}
+          </span>
           <div className="button-row">
             <button disabled={!result?.main_video_path || !aiShorts.length || hasInvalidCuts || previewing} onClick={() => refreshCutPreviews()}>
               {previewing ? "Building Previews..." : "Refresh Previews"}
             </button>
             <button disabled={!result?.aiPlan?.shorts?.length} onClick={restoreAiPlan}>Restore AI Plan</button>
+            <button onClick={addManualCut}>Add Manual Cut</button>
           </div>
         </div>
         <div className="clip-editor-grid">
@@ -1658,6 +1720,16 @@ function ShortsArchitectPage() {
               <div className="clip-editor-heading">
                 <span>Cut {index + 1}</span>
                 <strong>{Number(clip.score ?? 0).toFixed(0)}/100</strong>
+              </div>
+              <div className="clip-meta-row">
+                <span>{Math.max(Number(clip.end ?? 0) - Number(clip.start ?? 0), 0).toFixed(1)}s duration</span>
+                <span>
+                  {mainVideoDuration && Number(clip.end ?? 0) > mainVideoDuration
+                    ? `Exceeds main video (${mainVideoDuration.toFixed(1)}s)`
+                    : layout === "Duet Mode" && brollVideoDuration && (Number(clip.end ?? 0) - Number(clip.start ?? 0)) > brollVideoDuration
+                      ? `Longer than B-Roll (${brollVideoDuration.toFixed(1)}s)`
+                      : "Timing looks valid"}
+                </span>
               </div>
               {previewFramesByIndex.get(index) ? (
                 <figure className="cut-preview-frame">
@@ -1691,7 +1763,10 @@ function ShortsArchitectPage() {
                 <span>Reason</span>
                 <textarea rows={3} value={clip.reason ?? ""} onChange={(event) => updateShort(index, { reason: event.target.value })} />
               </label>
-              <button onClick={() => removeShort(index)}>Remove Cut</button>
+              <div className="button-row">
+                <button onClick={() => duplicateShort(index)}>Duplicate Cut</button>
+                <button onClick={() => removeShort(index)}>Remove Cut</button>
+              </div>
             </article>
           )) : <p>Upload a full performance and let A.R.I.A. select the cuts.</p>}
         </div>
@@ -1710,9 +1785,11 @@ function ShortsArchitectPage() {
             <InfoRow label="Listening" value="Librosa + Faster Whisper" />
             <InfoRow label="Visual Pass" value={activeVisionModel || "Off until a local vision model is set"} />
             <InfoRow label="Layout" value={layout} />
+            <InfoRow label="Main Runtime" value={mainVideoDuration ? `${mainVideoDuration.toFixed(1)}s` : "Load a main video"} />
+            <InfoRow label="B-Roll Runtime" value={brollVideoDuration ? `${brollVideoDuration.toFixed(1)}s` : "Optional"} />
             <InfoRow label="Export" value="MoviePy + FFmpeg" />
             <InfoRow label="Output" value={renderResult?.outputs.length ? `${renderResult.outputs.length} file(s) in shorts_output/` : "shorts_output/"} />
-            <InfoRow label="Render Readiness" value={duetMissingBroll ? "Needs B-Roll for Duet Mode" : hasInvalidCuts ? "Fix cut timing" : aiShorts.length ? "Ready after review" : "Run AI Director first"} />
+            <InfoRow label="Render Readiness" value={duetMissingBroll ? "Needs B-Roll for Duet Mode" : duetCutsExceedBroll ? "Shorten cuts or load longer B-Roll" : hasInvalidCuts ? "Fix cut timing" : aiShorts.length ? "Ready after review" : "Run AI Director first"} />
           </div>
         </Panel>
       </div>

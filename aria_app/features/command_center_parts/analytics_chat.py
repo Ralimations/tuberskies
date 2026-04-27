@@ -5,7 +5,7 @@ import textwrap
 import pandas as pd
 import streamlit as st
 
-from aria_app.ai import stream_ollama_response
+from aria_app.ai import stream_aria_response
 from aria_app.ui import render_panel_header
 
 
@@ -187,7 +187,7 @@ def render_analytics_chat(
 
     model = st.session_state.vault_settings.get("ollama_model", "gemma")
     with st.chat_message("assistant"):
-        response = st.write_stream(stream_ollama_response(_build_chat_prompt(user_prompt, context), model))
+        response = st.write_stream(stream_aria_response(_build_chat_prompt(user_prompt, context), model))
         if not response:
             st.write(EMPTY_ASSISTANT_RESPONSE)
     assistant_response = response or EMPTY_ASSISTANT_RESPONSE

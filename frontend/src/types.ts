@@ -77,11 +77,10 @@ export type VaultPayload = {
     youtube_api_key: string;
     youtube_client_id: string;
     youtube_client_secret: string;
-    ollama_model: string;
-    ollama_vision_model: string;
+    model_name: string;
+    model_endpoint: string;
   };
-  ollama_models: string[];
-  ollama_vision_models: string[];
+  available_models: string[];
   recommended_free_vision_models: { name: string; label: string }[];
   connection: {
     api_key: boolean;
@@ -161,6 +160,16 @@ export type ShortsAiAnalyzePayload = {
   warnings?: string[];
   main_video_path: string;
   broll_video_path: string;
+  mainVideo?: {
+    filename: string;
+    path: string;
+    duration_seconds: number;
+  };
+  brollVideo?: {
+    filename: string;
+    path: string;
+    duration_seconds: number;
+  };
   segments: Record<string, unknown>[];
   transcriptRows: Record<string, unknown>[];
   visualNotes: string;

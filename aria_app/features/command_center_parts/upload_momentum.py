@@ -5,7 +5,7 @@ import textwrap
 import pandas as pd
 import streamlit as st
 
-from aria_app.ai import stream_ollama_response
+from aria_app.ai import stream_aria_response
 from aria_app.ui import render_editorial_list, render_insight_card, render_leaderboard_card, render_panel_header
 from aria_app.features.command_center_parts.upload_metrics import (
     build_archetype_recommendations,
@@ -285,7 +285,7 @@ def render_momentum_planner(video_df: pd.DataFrame, settings: dict[str, str]) ->
                 """
             ).strip()
             with st.chat_message("assistant"):
-                st.write_stream(stream_ollama_response(prompt, model))
+                st.write_stream(stream_aria_response(prompt, model))
     with right:
         if trend_df is not None and not trend_df.empty:
             trend_rows = []

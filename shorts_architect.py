@@ -46,6 +46,26 @@ def sample_video_frames(video_path: Path, frame_count: int = 6) -> list[Path]:
     return frame_paths
 
 
+def sample_segment_frames(video_path: Path, segments: list[dict[str, float]]) -> list[Path]:
+    from moviepy.editor import VideoFileClip
+
+    frame_paths: list[Path] = []
+    with VideoFileClip(str(video_path)) as clip:
+        duration = max(float(clip.duration or 0), 0)
+        if duration <= 0:
+            return []
+        for index, segment in enumerate(segments):
+            start = float(segment.get("start", 0))
+            end = float(segment.get("end", start + 5))
+            # Sample at the 1/3 and 2/3 marks of each segment for better variety
+            for sub_index, ratio in enumerate([0.33, 0.66]):
+                timestamp = min(duration - 0.05, start + (end - start) * ratio)
+                frame_path = SHORTS_WORKDIR / f"{video_path.stem}_seg_{index + 1}_sample_{sub_index + 1}.jpg"
+                clip.save_frame(str(frame_path), t=max(timestamp, 0))
+                frame_paths.append(frame_path)
+    return frame_paths
+
+
 def preview_shorts_frames(video_path: Path, shorts_plan: list[dict[str, Any]]) -> list[dict[str, Any]]:
     from moviepy.editor import VideoFileClip
 

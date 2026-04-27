@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from aria_app.ai import build_coach_prompt, stream_ollama_response
+from aria_app.ai import build_coach_prompt, stream_aria_response
 from aria_app.features.command_center_parts.keyword_tools import build_keyword_opportunity_df, build_title_scorecard
 from aria_app.ui import render_editorial_list, render_panel_header, render_section_header
 
@@ -18,7 +18,7 @@ ACTION_LABELS = {
 
 def _run_generation(prompt: str, model: str, last_action: str) -> None:
     with st.chat_message("assistant"):
-        response = st.write_stream(stream_ollama_response(prompt, model))
+        response = st.write_stream(stream_aria_response(prompt, model))
     st.session_state.niche_output = response or ""
     st.session_state.niche_last_action = last_action
 

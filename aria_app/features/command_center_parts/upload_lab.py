@@ -5,7 +5,7 @@ import textwrap
 import pandas as pd
 import streamlit as st
 
-from aria_app.ai import stream_ollama_response
+from aria_app.ai import stream_aria_response
 from aria_app.ui import render_action_strip, render_editorial_list, render_insight_card, render_leaderboard_card, render_panel_header
 from aria_app.features.command_center_parts.upload_metrics import (
     build_format_rows,
@@ -116,7 +116,7 @@ def render_upload_lab(video_df: pd.DataFrame, upload_message: str) -> None:
                     """
                 ).strip()
                 with st.chat_message("assistant"):
-                    st.write_stream(stream_ollama_response(prompt, model))
+                    st.write_stream(stream_aria_response(prompt, model))
         return
 
     if upload_section == "History":

@@ -1302,6 +1302,38 @@ td {
   box-shadow: 0 0 0 3px rgba(45, 125, 240, 0.28);
 }
 
+.shorts-source-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.source-chip {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.source-chip strong {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.source-chip span {
+  color: var(--ink);
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+.source-chip small {
+  color: var(--muted);
+}
+
 .clip-plan-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1369,6 +1401,22 @@ td {
   border: 1px solid var(--line-soft);
   border-radius: 10px;
   background: var(--bg);
+}
+
+.clip-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.clip-meta-row span {
+  padding: 6px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .clip-editor-heading,

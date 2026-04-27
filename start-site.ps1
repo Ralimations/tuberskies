@@ -1,7 +1,6 @@
 param(
     [int]$ApiPort = 8000,
     [int]$FrontendPort = 5173,
-    [int]$OllamaPort = 11434,
     [switch]$SkipModelWarmup,
     [switch]$SkipInstall,
     [switch]$NoBrowser
@@ -12,7 +11,6 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $FrontendDir = Join-Path $Root "frontend"
 $NodeDir = "C:\Program Files\nodejs"
-$OllamaExe = "ollama"
 $StartedOk = $true
 
 function Test-Port {
@@ -137,38 +135,6 @@ if (-not $nodeCommand) {
     $StartedOk = $false
 }
 
-$ollamaCommand = Get-Command "ollama" -ErrorAction SilentlyContinue
-if ($ollamaCommand) {
-    $OllamaExe = $ollamaCommand.Source
-}
-elseif (Test-Path "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe") {
-    $OllamaExe = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
-}
-
-if (-not (Test-Port -Port $OllamaPort)) {
-    Write-Host "Starting Ollama on port $OllamaPort..." -ForegroundColor Yellow
-    Start-Process -FilePath $OllamaExe -ArgumentList @("serve") -WindowStyle Hidden
-    if (-not (Wait-Port -Name "Ollama" -Port $OllamaPort -TimeoutSeconds 20)) {
-        $StartedOk = $false
-    }
-}
-else {
-    Write-Host "Ollama is already running." -ForegroundColor Green
-}
-
-$Model = Get-EnvValue -Key "OLLAMA_MODEL" -Default "gemma"
-if (-not $SkipModelWarmup) {
-    Write-Host "Warming A.R.I.A. model: $Model" -ForegroundColor Yellow
-    try {
-        & $OllamaExe run $Model "Reply with: ready" | Out-Null
-        Write-Host "A.R.I.A. model is ready." -ForegroundColor Green
-    }
-    catch {
-        Write-Host "Model warmup failed. The site will still start, but chat may fail until Ollama/model is ready." -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor DarkRed
-    }
-}
-else {
     Write-Host "Skipping A.R.I.A. model warmup." -ForegroundColor DarkGray
 }
 
@@ -231,7 +197,6 @@ else {
 }
 Write-Host "Frontend: $FrontendUrl"
 Write-Host "API:      http://127.0.0.1:$ApiPort/api/health"
-Write-Host "Ollama:   http://127.0.0.1:$OllamaPort"
 Write-Host "Database: $DatabaseMode"
 Write-Host ""
 Write-Host "Tip: run with -SkipModelWarmup if you want the site to open faster." -ForegroundColor DarkGray

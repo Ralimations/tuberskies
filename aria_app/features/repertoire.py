@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from aria_app.ai import stream_ollama_response
+from aria_app.ai import stream_aria_response
 from aria_app.ui import (
     render_editorial_list,
     render_insight_card,
@@ -162,7 +162,7 @@ def render_idea_board(df: pd.DataFrame) -> None:
             if next_step:
                 prompt += "\n\nKeep the answer especially focused on the next concrete action for today."
             with st.chat_message("assistant"):
-                response = st.write_stream(stream_ollama_response(prompt, model))
+                response = st.write_stream(stream_aria_response(prompt, model))
             st.session_state.calendar_coach_output = response or ""
             st.session_state.calendar_coach_context = f"Idea Board: {selected_row['title']}"
     with right:
@@ -199,7 +199,7 @@ def render_timeline_planner(df: pd.DataFrame) -> None:
             model = st.session_state.vault_settings.get("ollama_model", "gemma")
             prompt = build_timeline_prompt(scheduled)
             with st.chat_message("assistant"):
-                response = st.write_stream(stream_ollama_response(prompt, model))
+                response = st.write_stream(stream_aria_response(prompt, model))
             st.session_state.calendar_coach_output = response or ""
             st.session_state.calendar_coach_context = "A.R.I.A. Timeline Planner"
 
