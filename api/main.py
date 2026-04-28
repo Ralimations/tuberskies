@@ -15,7 +15,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from aria_app.ai import build_coach_prompt
-from aria_app.llm_client import get_llm_client
+from aria_app.llm_client import get_llm_client, is_custom_api, get_model_name
+import requests
 from aria_app.features.command_center_parts.analytics import (
     build_channel_audit_rows,
     build_creator_hero_stats,
@@ -522,6 +523,9 @@ def _direct_chat_response(message: str, payload: dict[str, Any]) -> str | None:
 
 def _small_talk_response(message: str) -> str | None:
     cleaned = " ".join(message.lower().strip().replace("!", "").replace(".", "").split())
+    if cleaned.endswith(" aria"):
+        cleaned = cleaned[:-5].strip()
+        
     greetings = {"hi", "hello", "hey", "yo", "sup", "test", "testing"}
     thanks = {"thanks", "thank you", "ty"}
     if cleaned in greetings:
@@ -536,6 +540,41 @@ def _small_talk_response(message: str) -> str | None:
 def _assistant_response(prompt: str, model: str) -> str:
     try:
         client = _get_client()
+        url_str = str(client.base_url)
+        if is_custom_api(url_str):
+            target_url = url_str.rstrip("/") 
+            response = requests.post(
+                target_url,
+                json={
+                    "model": get_model_name(),
+                    "system_prompt": "You are A.R.I.A., a concise private YouTube analytics strategist.",
+                    "input": prompt,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            content = None
+            if isinstance(payload, dict):
+                if "output" in payload and isinstance(payload["output"], list):
+                    for item in payload["output"]:
+                        if item.get("type") == "message":
+                            content = item.get("content")
+                            break
+                    if not content and len(payload["output"]) > 0:
+                        content = payload["output"][0].get("content")
+                if not content:
+                    content = payload.get("response") or payload.get("content")
+            
+            content = content or str(payload)
+            content_str = str(content)
+            import re
+            
+            # Strip standard <think> tags if present
+            content_str = re.sub(r"<think>.*?</think>", "", content_str, flags=re.DOTALL).strip()
+            
+            return content_str
+
         response = client.chat.completions.create(
             model=model,
             messages=[
@@ -554,6 +593,40 @@ def _assistant_response(prompt: str, model: str) -> str:
 def _stream_assistant_response(prompt: str, model: str):
     try:
         client = _get_client()
+        url_str = str(client.base_url)
+        if is_custom_api(url_str):
+            target_url = url_str.rstrip("/") 
+            response = requests.post(
+                target_url,
+                json={
+                    "model": get_model_name(),
+                    "system_prompt": "You are A.R.I.A., a concise private YouTube analytics strategist.",
+                    "input": prompt,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            content = None
+            if isinstance(payload, dict):
+                if "output" in payload and isinstance(payload["output"], list):
+                    for item in payload["output"]:
+                        if item.get("type") == "message":
+                            content = item.get("content")
+                            break
+                    if not content and len(payload["output"]) > 0:
+                        content = payload["output"][0].get("content")
+                if not content:
+                    content = payload.get("response") or payload.get("content")
+            
+            content = content or str(payload)
+            content_str = str(content)
+            import re
+            content_str = re.sub(r"<think>.*?</think>", "", content_str, flags=re.DOTALL).strip()
+            
+            yield content_str
+            return
+
         stream = client.chat.completions.create(
             model=model,
             messages=[

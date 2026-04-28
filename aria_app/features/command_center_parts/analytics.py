@@ -50,44 +50,6 @@ def build_creator_hero_stats(
     ]
 
 
-def build_analytics_chart(df: pd.DataFrame, metric_name: str) -> None:
-    import plotly.express as px
-    import streamlit as st
-
-    if df.empty or metric_name not in df.columns:
-        st.info("No live analytics are available for this chart yet.")
-        return
-
-    chart_df = df.dropna(subset=[metric_name]).copy()
-    if chart_df.empty:
-        st.info(f"{metric_name.upper() if metric_name == 'ctr' else metric_name.title()} is not available from the current live analytics query.")
-        return
-
-    labels = {"ctr": "CTR (%)", "retention": "Retention (%)", "views": "Views"}
-    chart = px.line(
-        chart_df,
-        x="date",
-        y=metric_name,
-        markers=True,
-        title=f"{labels[metric_name]} Over Time",
-        template="plotly_dark",
-    )
-    chart.update_traces(line=dict(color="#2d7df0", width=2.4), marker=dict(size=4, color="#2d7df0"))
-    chart.update_layout(
-        height=380,
-        margin=dict(l=18, r=18, t=52, b=18),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#151922",
-        font=dict(color="#f6f7fb", family="Inter, Segoe UI, Arial, sans-serif"),
-        title_font=dict(family="Inter, Segoe UI, Arial, sans-serif", size=17, color="#f6f7fb"),
-        xaxis_title=None,
-        yaxis_title=None,
-    )
-    chart.update_xaxes(showgrid=False, linecolor="#252b37", tickfont=dict(color="#a7afbf"))
-    chart.update_yaxes(gridcolor="#252b37", zeroline=False, tickfont=dict(color="#a7afbf"))
-    st.plotly_chart(chart, use_container_width=True)
-
-
 def get_alert_rows(df: pd.DataFrame) -> pd.DataFrame:
     ctr_alert = df["ctr"] < 5.0 if "ctr" in df.columns and df["ctr"].notna().any() else pd.Series(False, index=df.index)
     retention_alert = df["retention"] < 42.0 if "retention" in df.columns else pd.Series(False, index=df.index)

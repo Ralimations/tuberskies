@@ -101,12 +101,12 @@ export function MetricCard({
   const isDown = change !== undefined && change < 0;
 
   return (
-    <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 flex flex-col gap-3 hover:border-[var(--color-aria-border-strong)] transition-colors">
-      <p className="text-xs font-semibold text-[var(--color-aria-muted)] uppercase tracking-wide">
+    <div className="flex flex-col gap-4 rounded-[24px] border border-[var(--color-aria-border)] bg-white/5 p-5 transition-colors hover:border-[var(--color-aria-border-strong)]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-aria-muted)]">
         {label}
       </p>
       <div className="flex items-end justify-between gap-2">
-        <p className="text-2xl font-bold text-[var(--color-aria-ink)] font-mono leading-none">
+        <p className="font-mono text-3xl font-bold leading-none text-[var(--color-aria-ink)]">
           {value}
         </p>
         <MiniSparkline data={sparklineData} color={c} />
@@ -115,7 +115,7 @@ export function MetricCard({
         <div className={cn("flex items-center gap-1 text-xs font-semibold", isUp ? "text-[var(--color-aria-green)]" : isDown ? "text-[var(--color-aria-red)]" : "text-[var(--color-aria-muted)]")}>
           {isUp ? <TrendingUp className="h-3.5 w-3.5" /> : isDown ? <TrendingDown className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
           {isUp ? "+" : ""}{change}%
-          {changeLabel && <span className="text-[var(--color-aria-muted)] font-normal ml-1">{changeLabel}</span>}
+          {changeLabel && <span className="ml-1 font-normal text-[var(--color-aria-muted)]">{changeLabel}</span>}
         </div>
       )}
     </div>

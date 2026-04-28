@@ -79,10 +79,10 @@ function Get-EnvValue {
 
 function Get-DatabaseMode {
     $databaseUrl = Get-EnvValue -Key "DATABASE_URL" -Default ""
-    if ($databaseUrl) {
-        return "PostgreSQL"
+    if (-not $databaseUrl) {
+        throw "DATABASE_URL is required. PostgreSQL must be configured."
     }
-    return "SQLite"
+    return "PostgreSQL"
 }
 
 function Test-NodeChildProcess {
@@ -117,7 +117,7 @@ function Start-PowerShellProcess {
     )
 
     $wrappedCommand = "`$Host.UI.RawUI.WindowTitle = '$Title'; Set-Location '$WorkingDirectory'; $Command"
-    Start-Process -FilePath "powershell" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", $wrappedCommand)
+    return Start-Process -FilePath "powershell" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", $wrappedCommand) -PassThru
 }
 
 Write-Host ""
@@ -137,9 +137,10 @@ if (-not $nodeCommand) {
 
 Write-Host "Skipping A.R.I.A. model warmup." -ForegroundColor DarkGray
 
+$ApiProcess = $null
 if (-not (Test-Port -Port $ApiPort)) {
     Write-Host "Starting FastAPI backend on http://127.0.0.1:$ApiPort ..." -ForegroundColor Yellow
-    Start-PowerShellProcess `
+    $ApiProcess = Start-PowerShellProcess `
         -Title "A.R.I.A. API" `
         -WorkingDirectory $Root `
         -Command "python -B -m uvicorn api.main:app --host 127.0.0.1 --port $ApiPort"
@@ -165,10 +166,11 @@ elseif ($SkipInstall) {
     Write-Host "Skipping frontend dependency install." -ForegroundColor DarkGray
 }
 
+$FrontendProcess = $null
 if ($nodeCommand -and (-not (Test-Port -Port $FrontendPort))) {
     Test-NodeChildProcess | Out-Null
     Write-Host "Starting Vite frontend on http://127.0.0.1:$FrontendPort ..." -ForegroundColor Yellow
-    Start-PowerShellProcess `
+    $FrontendProcess = Start-PowerShellProcess `
         -Title "A.R.I.A. Frontend" `
         -WorkingDirectory $FrontendDir `
         -Command "`$env:Path = '$NodeDir;' + `$env:Path; npm.cmd run dev -- --host 127.0.0.1 --port $FrontendPort --configLoader native"
@@ -200,3 +202,61 @@ Write-Host "Database: $DatabaseMode"
 Write-Host ""
 Write-Host "Tip: run with -SkipModelWarmup if you want the site to open faster." -ForegroundColor DarkGray
 Write-Host "Tip: run with -NoBrowser if you want to start services without opening the app." -ForegroundColor DarkGray
+
+Write-Host ""
+if ($ApiProcess -or $FrontendProcess) {
+    while ($true) {
+        Write-Host "=======================================================" -ForegroundColor Cyan
+        Write-Host "Press [R] to RESTART or [S] to STOP A.R.I.A. Studio..." -ForegroundColor Cyan
+        Write-Host "=======================================================" -ForegroundColor Cyan
+        
+        # Read a key, ensuring we get a valid character
+        $key = ""
+        while ($key -notmatch "^[RS]$") {
+            $keyInfo = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            $key = $keyInfo.Character.ToString().ToUpper()
+        }
+
+        if ($key -eq "S") {
+            Write-Host "`nStopping A.R.I.A. Studio services..." -ForegroundColor Yellow
+            if ($ApiProcess -and (-not $ApiProcess.HasExited)) {
+                Write-Host "Shutting down API..." -ForegroundColor DarkGray
+                taskkill /PID $ApiProcess.Id /T /F 2>&1 | Out-Null
+            }
+            if ($FrontendProcess -and (-not $FrontendProcess.HasExited)) {
+                Write-Host "Shutting down Frontend..." -ForegroundColor DarkGray
+                taskkill /PID $FrontendProcess.Id /T /F 2>&1 | Out-Null
+            }
+            Write-Host "Services stopped successfully." -ForegroundColor Green
+            Start-Sleep -Seconds 1
+            break
+        }
+        elseif ($key -eq "R") {
+            Write-Host "`nRestarting A.R.I.A. Studio services..." -ForegroundColor Yellow
+            
+            if ($ApiProcess -and (-not $ApiProcess.HasExited)) {
+                taskkill /PID $ApiProcess.Id /T /F 2>&1 | Out-Null
+            }
+            if ($FrontendProcess -and (-not $FrontendProcess.HasExited)) {
+                taskkill /PID $FrontendProcess.Id /T /F 2>&1 | Out-Null
+            }
+            
+            # Brief pause to ensure ports are released
+            Start-Sleep -Seconds 2
+
+            Write-Host "Starting FastAPI backend on http://127.0.0.1:$ApiPort ..." -ForegroundColor Yellow
+            $ApiProcess = Start-PowerShellProcess `
+                -Title "A.R.I.A. API" `
+                -WorkingDirectory $Root `
+                -Command "python -B -m uvicorn api.main:app --host 127.0.0.1 --port $ApiPort"
+            
+            Write-Host "Starting Vite frontend on http://127.0.0.1:$FrontendPort ..." -ForegroundColor Yellow
+            $FrontendProcess = Start-PowerShellProcess `
+                -Title "A.R.I.A. Frontend" `
+                -WorkingDirectory $FrontendDir `
+                -Command "`$env:Path = '$NodeDir;' + `$env:Path; npm.cmd run dev -- --host 127.0.0.1 --port $FrontendPort --configLoader native"
+                
+            Write-Host "Services restarted successfully!`n" -ForegroundColor Green
+        }
+    }
+}

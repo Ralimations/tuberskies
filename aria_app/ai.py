@@ -17,9 +17,10 @@ def get_system_prompt(vault_settings: dict[str, str]) -> str:
         f"You are A.R.I.A. (Algorithmic Retention & Intelligence Assistant), the private AI strategy coach "
         f"for the YouTube channel '{channel_name}'. {channel_name} specializes in {niche}. "
         f"The community/target audience is called '{target_audience}'. Your job is to analyze retention and concept strength, "
-        f"brainstorm high-retention video ideas, write SEO-optimized metadata, and help identify fan requests "
         f"from comments or request dumps. Be encouraging but highly strategic. Respect the creator's workflow. "
-        f"When suggesting titles or concepts, lean into the following tone: {tone}"
+        f"When suggesting titles or concepts, lean into the following tone: {tone}\n\n"
+        f"CRITICAL INSTRUCTION: DO NOT output any internal monologue, reasoning traces, or 'Thinking Process:' blocks. "
+        f"Output ONLY the final answer directly."
     )
 
 
@@ -67,8 +68,28 @@ def stream_aria_response(
             response.raise_for_status()
             payload = response.json()
             # If the custom API returns a direct string or a dict with 'response' key
-            content = payload.get("response") or payload.get("content") or str(payload)
-            yield str(content)
+            content = None
+            if isinstance(payload, dict):
+                if "output" in payload and isinstance(payload["output"], list):
+                    # Find the first item with type "message" to skip reasoning blocks
+                    for item in payload["output"]:
+                        if item.get("type") == "message":
+                            content = item.get("content")
+                            break
+                    # Fallback to the first item if no "message" type is found
+                    if not content and len(payload["output"]) > 0:
+                        content = payload["output"][0].get("content")
+                if not content:
+                    content = payload.get("response") or payload.get("content")
+            
+            content = content or str(payload)
+            content_str = str(content)
+            
+            import re
+            # Strip standard <think> tags if present
+            content_str = re.sub(r"<think>.*?</think>", "", content_str, flags=re.DOTALL).strip()
+            
+            yield content_str
             return
 
         stream = client.chat.completions.create(

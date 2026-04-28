@@ -7,15 +7,22 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { DataTable } from "@/components/shared/DataTable";
+import { useBootstrap } from "@/context/BootstrapContext";
 
 export default function Vault() {
+  const { refresh } = useBootstrap();
   const [payload, setPayload] = useState<VaultPayload | null>(null);
   const [settings, setSettings] = useState<VaultPayload["settings"] | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    loadVault().then((r) => { setPayload(r); setSettings(r.settings); }).catch((e: Error) => setStatus(e.message));
+    loadVault()
+      .then((result) => {
+        setPayload(result);
+        setSettings(result.settings);
+      })
+      .catch((e: Error) => setStatus(e.message));
   }, []);
 
   function update(key: keyof VaultPayload["settings"], value: string) {
@@ -27,43 +34,58 @@ export default function Vault() {
     if (!settings) return;
     setBusy(true);
     try {
-      const r = await saveVault(settings);
-      setPayload(r);
-      setSettings(r.settings);
+      const result = await saveVault(settings);
+      setPayload(result);
+      setSettings(result.settings);
       setStatus("Vault settings saved.");
-    } catch (e) { setStatus(e instanceof Error ? e.message : "Save failed."); }
-    finally { setBusy(false); }
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function reconnect() {
     setBusy(true);
     try {
-      const r = await authorizeYoutube();
-      setPayload(r);
-      setStatus(r.message ?? r.connection.message);
-    } catch (e) { setStatus(e instanceof Error ? e.message : "Auth failed."); }
-    finally { setBusy(false); }
+      const result = await authorizeYoutube();
+      setPayload(result);
+      setStatus(result.message ?? result.connection.message);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Auth failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function clearToken() {
     setBusy(true);
     try {
-      const r = await clearYoutubeToken();
-      setPayload(r);
-      setStatus(r.message ?? "Token cleared.");
-    } catch (e) { setStatus(e instanceof Error ? e.message : "Failed."); }
-    finally { setBusy(false); }
+      const result = await clearYoutubeToken();
+      setPayload(result);
+      setStatus(result.message ?? "Token cleared.");
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function checkLatest() {
     setBusy(true);
-    setStatus("Checking latest YouTube data…");
+    setStatus("Checking latest YouTube data...");
     try {
-      const r = await checkLatestYoutubeData();
-      setStatus(Object.entries(r.messages).map(([k, v]) => `${k}: ${v}`).join("\n") || "Done.");
-      setPayload((prev) => prev ? { ...prev, cache: r.cache } : prev);
-    } catch (e) { setStatus(e instanceof Error ? e.message : "Check failed."); }
-    finally { setBusy(false); }
+      const result = await checkLatestYoutubeData();
+      setStatus(Object.entries(result.messages).map(([k, v]) => `${k}: ${v}`).join("\n") || "Done.");
+      const freshVault = await loadVault();
+      setPayload(freshVault);
+      setSettings(freshVault.settings);
+      await refresh();
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Check failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const conn = payload?.connection;
@@ -73,24 +95,24 @@ export default function Vault() {
       <PageHeader title="The Vault" subtitle="API keys, YouTube credentials, model settings, and creator profile." />
 
       {status && (
-        <div className="rounded-xl border border-[var(--color-aria-blue)]/20 bg-[var(--color-aria-blue-dim)] px-4 py-3 text-sm text-[var(--color-aria-blue)] whitespace-pre-wrap">{status}</div>
+        <div className="rounded-xl border border-[var(--color-aria-blue)]/20 bg-[var(--color-aria-blue-dim)] px-4 py-3 text-sm text-[var(--color-aria-blue)] whitespace-pre-wrap">
+          {status}
+        </div>
       )}
 
-      {/* Connection status cards */}
       <div className="grid grid-cols-3 gap-3">
         <ConnCard label="API Key" ok={conn?.api_key} sub="YouTube Data API" />
         <ConnCard label="OAuth Client" ok={conn?.oauth_client} sub="Write access" />
         <ConnCard label="Token" ok={conn?.token} sub="Saved locally" />
       </div>
 
-      {/* YouTube actions */}
       <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="mb-4 flex items-center gap-2">
           <Link2 className="h-4 w-4 text-[var(--color-aria-blue)]" />
           <p className="text-sm font-semibold text-[var(--color-aria-ink)]">YouTube Connection</p>
           {conn && <Badge color={conn.connected ? "green" : "amber"} dot>{conn.message}</Badge>}
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={reconnect} disabled={busy || !conn?.oauth_client}>
             <Link2 className="h-3.5 w-3.5" /> Reconnect
           </Button>
@@ -103,7 +125,6 @@ export default function Vault() {
         </div>
       </div>
 
-      {/* Settings form */}
       {settings && (
         <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 space-y-5">
           <div className="flex items-center justify-between">
@@ -116,7 +137,7 @@ export default function Vault() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Model Name" value={settings.model_name} onChange={(v) => update("model_name", v)} />
             <Field label="Model Endpoint" value={settings.model_endpoint} onChange={(v) => update("model_endpoint", v)} />
             <Field label="YouTube API Key" value={settings.youtube_api_key} onChange={(v) => update("youtube_api_key", v)} secret />
@@ -124,28 +145,33 @@ export default function Vault() {
             <Field label="YouTube Client Secret" value={settings.youtube_client_secret} onChange={(v) => update("youtube_client_secret", v)} secret />
           </div>
 
-          <div className="pt-2 border-t border-[var(--color-aria-border)]">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-aria-muted)] mb-4">Creator Profile</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="border-t border-[var(--color-aria-border)] pt-2">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">Creator Profile</p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="Channel Name" value={settings.channel_name} onChange={(v) => update("channel_name", v)} />
               <Field label="Niche" value={settings.niche} onChange={(v) => update("niche", v)} />
               <Field label="Target Audience" value={settings.target_audience} onChange={(v) => update("target_audience", v)} />
               <Field label="Tone" value={settings.tone} onChange={(v) => update("tone", v)} />
             </div>
             <div className="mt-4">
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)] mb-1.5">Default Description</label>
-              <textarea value={settings.default_description} onChange={(e) => update("default_description", e.target.value)} rows={6}
-                className="w-full bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-aria-ink)] outline-none focus:border-[var(--color-aria-blue)] transition-colors resize-none font-mono" />
+              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">
+                Default Description
+              </label>
+              <textarea
+                value={settings.default_description}
+                onChange={(e) => update("default_description", e.target.value)}
+                rows={6}
+                className="w-full resize-none rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-3 font-mono text-sm text-[var(--color-aria-ink)] outline-none transition-colors focus:border-[var(--color-aria-blue)]"
+              />
             </div>
           </div>
         </div>
       )}
 
-      {/* Data freshness */}
       {payload?.cache?.length ? (
         <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
-          <p className="text-sm font-semibold text-[var(--color-aria-ink)] mb-4">Data Freshness</p>
-          <DataTable rows={payload.cache} columns={["dataset","status","latest_data_date","today_date"]} />
+          <p className="mb-4 text-sm font-semibold text-[var(--color-aria-ink)]">Data Freshness</p>
+          <DataTable rows={payload.cache} columns={["dataset", "status", "latest_data_date", "today_date"]} />
         </div>
       ) : null}
     </motion.div>
@@ -155,9 +181,11 @@ export default function Vault() {
 function ConnCard({ label, ok, sub }: { label: string; ok?: boolean; sub: string }) {
   return (
     <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-4 text-center">
-      <p className="text-xs text-[var(--color-aria-muted)] mb-1">{label}</p>
-      <p className={`text-xl font-black font-mono ${ok ? "text-[var(--color-aria-green)]" : "text-[var(--color-aria-red)]"}`}>{ok ? "Yes" : "No"}</p>
-      <p className="text-[10px] text-[var(--color-aria-faint)] mt-1">{sub}</p>
+      <p className="mb-1 text-xs text-[var(--color-aria-muted)]">{label}</p>
+      <p className={`font-mono text-xl font-black ${ok ? "text-[var(--color-aria-green)]" : "text-[var(--color-aria-red)]"}`}>
+        {ok ? "Yes" : "No"}
+      </p>
+      <p className="mt-1 text-[10px] text-[var(--color-aria-faint)]">{sub}</p>
     </div>
   );
 }
@@ -165,9 +193,13 @@ function ConnCard({ label, ok, sub }: { label: string; ok?: boolean; sub: string
 function Field({ label, value, onChange, secret }: { label: string; value: string; onChange: (v: string) => void; secret?: boolean }) {
   return (
     <div>
-      <label className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)] mb-1.5">{label}</label>
-      <input type={secret ? "password" : "text"} value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-2.5 text-sm text-[var(--color-aria-ink)] outline-none focus:border-[var(--color-aria-blue)] transition-colors font-mono" />
+      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">{label}</label>
+      <input
+        type={secret ? "password" : "text"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-2.5 font-mono text-sm text-[var(--color-aria-ink)] outline-none transition-colors focus:border-[var(--color-aria-blue)]"
+      />
     </div>
   );
 }
