@@ -7,15 +7,17 @@ interface DataTableProps {
 }
 
 function fmt(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "number")
+  if (v === null || v === undefined || v === "") return "--";
+  if (typeof v === "number") {
     return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(1);
+  }
   return String(v);
 }
 
 export function DataTable({ rows, columns, emptyMessage = "No data available." }: DataTableProps) {
-  if (!rows.length)
-    return <p className="text-sm text-[var(--color-aria-muted)] py-4">{emptyMessage}</p>;
+  if (!rows.length) {
+    return <p className="py-4 text-sm text-[var(--color-aria-muted)]">{emptyMessage}</p>;
+  }
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--color-aria-border)]">
@@ -25,7 +27,7 @@ export function DataTable({ rows, columns, emptyMessage = "No data available." }
             {columns.map((col) => (
               <th
                 key={col}
-                className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]"
+                className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]"
               >
                 {col.replaceAll("_", " ")}
               </th>
@@ -37,15 +39,12 @@ export function DataTable({ rows, columns, emptyMessage = "No data available." }
             <tr
               key={i}
               className={cn(
-                "border-b border-[var(--color-aria-border)] last:border-0 transition-colors",
-                "hover:bg-[var(--color-aria-surface-2)]"
+                "border-b border-[var(--color-aria-border)] transition-colors last:border-0",
+                "hover:bg-[var(--color-aria-surface-2)]",
               )}
             >
               {columns.map((col) => (
-                <td
-                  key={col}
-                  className="px-4 py-3 text-[var(--color-aria-ink)] font-mono text-xs"
-                >
+                <td key={col} className="px-4 py-3 font-mono text-xs text-[var(--color-aria-ink)]">
                   {fmt(row[col])}
                 </td>
               ))}

@@ -1,18 +1,11 @@
 import { motion } from "framer-motion";
-import { Bell, Clock, Flame, TrendingUp } from "lucide-react";
+import { Bell, Clock3, Flame, TrendingUp, ImageIcon, WandSparkles } from "lucide-react";
 import { useBootstrap } from "@/context/BootstrapContext";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { NextBestAction } from "@/components/shared/NextBestAction";
 import { ChartCard } from "@/components/shared/ChartCard";
 import { InsightCard } from "@/components/shared/InsightCard";
 import { Badge } from "@/components/ui/Badge";
-
-const MOCK_SPARKLINES = {
-  views: [1800, 2100, 1950, 2600, 3100, 2800, 3400, 3200, 3800, 4100, 3700, 4500, 5200, 4900],
-  subscribers: [8, 12, 9, 14, 18, 11, 16, 20, 15, 22, 19, 25, 23, 28],
-  watch_time: [90, 110, 95, 130, 155, 140, 170, 160, 190, 205, 185, 225, 260, 245],
-  retention: [48, 51, 47, 53, 56, 52, 58, 55, 61, 59, 63, 60, 65, 62],
-};
 
 const TOP_CONTENT = [
   { rank: 1, title: "GRAVITY (Cover)", views: "267K", retention: "60.4%" },
@@ -31,6 +24,8 @@ export default function Dashboard() {
   const stats = data?.stats ?? [];
   const getStat = (label: string) => stats.find((s) => s.label === label);
   const analyticsRows = data?.analyticsRows ?? [];
+  const videoRows = data?.videoRows ?? [];
+  const topContentRows = videoRows.length ? videoRows.slice(0, 3) : TOP_CONTENT;
 
   const views7d = getStat("Views (7D)");
   const subs7d = getStat("Subscribers (7D)");
@@ -41,8 +36,16 @@ export default function Dashboard() {
   const pubMem = pm?.publish_memory as Record<string, unknown> | undefined;
   const bestDay = String(pubMem?.best_day ?? "Thursday");
   const nextAction = `Upload on ${bestDay} at 6:00 PM`;
-
   const today = data?.today;
+
+  const chartRows = analyticsRows.length ? analyticsRows : MOCK_CHART_DATA;
+  const peakRow = [...chartRows]
+    .map((row) => ({ date: String(row.date ?? ""), views: Number(row.views ?? 0) }))
+    .sort((a, b) => b.views - a.views)[0];
+  const latestRow = chartRows[chartRows.length - 1];
+  const previousRow = chartRows[chartRows.length - 2];
+  const direction =
+    latestRow && previousRow && Number(latestRow.views ?? 0) >= Number(previousRow.views ?? 0) ? "up" : "down";
 
   if (loading) {
     return (
@@ -56,136 +59,216 @@ export default function Dashboard() {
   }
 
   return (
-    <motion.div variants={stagger.container} initial="initial" animate="animate" className="space-y-6">
-      <motion.div variants={stagger.item} className="rounded-[28px] border border-[var(--color-aria-border)] bg-white/4 p-6">
+    <motion.div variants={stagger.container} initial="initial" animate="animate" className="mx-auto max-w-[1280px] space-y-[var(--space-section)]">
+      <motion.div variants={stagger.item} className="rounded-[28px] bg-white/4 p-8">
         <div className="flex items-start justify-between gap-4">
-          <div className="max-w-2xl">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[var(--color-aria-faint)]">
-              Daily command center
-            </p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-[var(--color-aria-ink)]">
+          <div className="max-w-3xl space-y-[var(--space-block)] pl-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[var(--color-aria-faint)]">Daily focus</p>
+            <h1 className="text-4xl font-semibold leading-[1.08] tracking-[-0.02em] text-[var(--color-aria-ink)] xl:text-5xl">
               Good evening, {data?.profile?.title ?? "Creator"}
             </h1>
-            <p className="mt-3 text-sm leading-6 text-[var(--color-aria-muted)]">
-              Your dashboard is tuned for the next upload window, the strongest signal, and where attention is climbing.
+            <p className="max-w-2xl text-base leading-7 text-[var(--color-aria-muted)]">
+              One goal today: push the next upload toward a stronger launch. The dashboard below is organized around that decision.
             </p>
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <Badge color="blue">Act on one priority</Badge>
+              <Badge color="cyan">Fresh channel data</Badge>
+              <Badge color="muted">Last 30 days in view</Badge>
+            </div>
           </div>
           <button className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[var(--color-aria-border)] bg-white/6 text-[var(--color-aria-muted)] transition-colors hover:text-[var(--color-aria-ink)]">
             <Bell className="h-4 w-4" />
-            <span className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-aria-cyan)] text-[10px] font-bold text-slate-950">
-              3
-            </span>
           </button>
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-2">
-          <Badge color="blue">Performance-led</Badge>
-          <Badge color="cyan">Audience timing aware</Badge>
-          <Badge color="muted">Last 7 days</Badge>
         </div>
       </motion.div>
 
       <motion.div variants={stagger.item}>
         <NextBestAction
           action={nextAction}
-          detail="This slot lines up with your strongest retention history and the best chance of converting interest into sustained watch time."
+          detail="Your recent performance supports publishing in this window. Use it for the strongest near-ready upload rather than spending it on an average release."
           confidence={86}
           reasons={[
-            `Highest retention on ${bestDay}s`,
-            "Audience activity peaks in this window",
-            "Matches your best recurring pattern",
-            "Lower competition pressure at publish time",
+            `Retention is strongest on ${bestDay}.`,
+            "This is your cleanest action with the highest short-term upside.",
+            "Audience activity and prior performance line up here.",
           ]}
         />
       </motion.div>
 
-      <motion.div variants={stagger.item} className="rounded-[28px] border border-[var(--color-aria-border)] bg-white/4 p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-[var(--color-aria-faint)]">
-              Overview
-            </p>
-            <p className="mt-1 text-sm text-[var(--color-aria-muted)]">Momentum across views, subs, watch time, and retention.</p>
-          </div>
-          <Badge color="muted">Last 7 days</Badge>
+      <motion.div variants={stagger.item} className="grid grid-cols-1 items-stretch gap-[var(--space-card-grid)] md:grid-cols-2 xl:grid-cols-12">
+        <div className="xl:col-span-6 2xl:col-span-3">
+          <MetricCard
+          label="Views (7D)"
+          value={views7d?.value ?? "-"}
+          change={18.6}
+          changeLabel="Demand is improving"
+          color="blue"
+          detail="Reach is climbing. This is the time to double down on the packaging pattern that caused the spike."
+        />
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Views (7D)" value={views7d?.value ?? "-"} change={18.6} changeLabel="vs last week" sparklineData={MOCK_SPARKLINES.views} color="blue" />
-          <MetricCard label="Subscribers (7D)" value={subs7d?.value ?? "-"} change={12.4} changeLabel="vs last week" sparklineData={MOCK_SPARKLINES.subscribers} color="purple" />
-          <MetricCard label="Watch Time (7D)" value={watch7d?.value ?? "-"} change={9.7} changeLabel="vs last week" sparklineData={MOCK_SPARKLINES.watch_time} color="cyan" />
-          <MetricCard label="Retention (Avg.)" value={retention?.value ?? "-"} change={6.3} changeLabel="vs last week" sparklineData={MOCK_SPARKLINES.retention} color="green" />
+        <div className="xl:col-span-6 2xl:col-span-3">
+          <MetricCard
+          label="Subscribers (7D)"
+          value={subs7d?.value ?? "-"}
+          change={12.4}
+          changeLabel="More viewers are converting"
+          color="purple"
+          detail="Subscriber pickup is healthy. Preserve the same title promise if this was driven by one standout upload."
+        />
+        </div>
+        <div className="xl:col-span-6 2xl:col-span-3">
+          <MetricCard
+          label="Watch Time (7D)"
+          value={watch7d?.value ?? "-"}
+          change={9.7}
+          changeLabel="Session depth is rising"
+          color="cyan"
+          detail="People are staying longer. Test a stronger second beat rather than changing the whole format."
+        />
+        </div>
+        <div className="xl:col-span-6 2xl:col-span-3">
+          <MetricCard
+          label="Retention (Avg.)"
+          value={retention?.value ?? "-"}
+          change={6.3}
+          changeLabel="Audience hold is stronger"
+          color="green"
+          detail="Retention is moving in the right direction. The next win is to tighten the opening even more."
+        />
         </div>
       </motion.div>
 
-      <motion.div variants={stagger.item} className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <ChartCard title="Performance Trend" data={analyticsRows.length ? analyticsRows : MOCK_CHART_DATA} />
+      <motion.div variants={stagger.item} className="grid grid-cols-1 items-stretch gap-[var(--space-card-grid)] xl:grid-cols-12">
+        <div className="xl:col-span-8">
+          <ChartCard
+          title="Performance trend"
+          data={chartRows}
+          summary={
+            direction === "up"
+              ? "The latest data is stabilizing after a spike. Look for which title, topic, or upload slot caused the jump and repeat that specific move."
+              : "The spike has cooled. Use the best-performing upload as the baseline and compare the drop-off to your weaker follow-ups."
+          }
+          annotation={peakRow ? { date: peakRow.date, label: "Peak day" } : null}
+        />
         </div>
-        <div className="rounded-[28px] border border-[var(--color-aria-border)] bg-white/4 p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-[var(--color-aria-ink)]">Top content</p>
-              <p className="mt-1 text-xs text-[var(--color-aria-muted)]">Best recent performers by reach and retention.</p>
+
+        <div className="xl:col-span-4">
+          <div className="flex h-full flex-col rounded-[28px] bg-white/4 p-6">
+          <div className="mb-[var(--space-default)] flex items-center justify-between gap-3">
+            <div className="min-w-0 space-y-[var(--space-title-subtitle)]">
+              <p className="text-lg font-semibold text-[var(--color-aria-ink)]">Top content</p>
+              <p className="text-sm leading-6 text-[var(--color-aria-muted)]">Use these as templates, not trophies.</p>
             </div>
-            <Badge color="muted">28D</Badge>
+            <Badge color="muted">Quick actions</Badge>
           </div>
-          <div className="space-y-3">
-            {(data?.videoRows?.slice(0, 3) || TOP_CONTENT).map((item: any, idx: number) => {
+          <div className="flex-1 space-y-[var(--space-card-grid)]">
+            {topContentRows.map((item: any, idx: number) => {
               const title = item.title || item.title;
-              const views = item.views !== undefined ? `${(item.views / 1000).toFixed(1)}K` : item.views;
+              const views = typeof item.views === "number" ? `${(item.views / 1000).toFixed(1)}K` : item.views;
               const retentionStr = item.retention !== undefined ? `${item.retention}%` : item.retention;
 
               return (
-                <div
-                  key={item.video_id || idx}
-                  className="rounded-[22px] border border-[var(--color-aria-border)] bg-white/6 p-4 transition-colors hover:border-[var(--color-aria-border-strong)]"
-                >
-                  <div className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-aria-blue-dim)] text-xs font-bold text-[var(--color-aria-blue)]">
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-[var(--color-aria-ink)]">{title}</p>
-                      <p className="mt-1 text-xs text-[var(--color-aria-muted)]">
-                        {views} views · {retentionStr} retention
-                      </p>
+                <div key={item.video_id || idx} className="rounded-[22px] bg-white/6 p-6">
+                  <div className="flex items-stretch gap-3">
+                    <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(79,110,247,0.22),rgba(94,234,212,0.14))] text-[var(--color-aria-blue)]">
+                      <ImageIcon className="h-5 w-5" />
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="mb-[var(--space-title-subtitle)] line-clamp-2 text-sm font-semibold leading-5 text-[var(--color-aria-ink)]">{title}</p>
+                          <p className="line-clamp-2 text-xs leading-5 text-[var(--color-aria-muted)]">
+                            {views} views - {retentionStr} retention
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-[var(--color-aria-blue-dim)] px-2 py-1 text-[10px] font-semibold text-[var(--color-aria-blue)]">
+                          #{idx + 1}
+                        </span>
+                      </div>
+                      <div className="mt-[var(--space-default)] flex flex-wrap gap-[var(--space-block)] pt-[var(--space-default)]">
+                        <button className="rounded-full border border-[var(--color-aria-border)] bg-white/5 px-3 py-1 text-xs text-[var(--color-aria-ink)]">
+                          Reuse angle
+                        </button>
+                        <button className="rounded-full border border-[var(--color-aria-border)] bg-white/5 px-3 py-1 text-xs text-[var(--color-aria-ink)]">
+                          Analyze
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
-          <button className="mt-4 text-sm font-semibold text-[var(--color-aria-blue)] transition-opacity hover:opacity-75">
-            View all content →
-          </button>
+        </div>
         </div>
       </motion.div>
 
       {today && (
-        <motion.div variants={stagger.item} className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <InsightCard
+        <motion.div variants={stagger.item} className="grid grid-cols-1 items-stretch gap-[var(--space-card-grid)] md:grid-cols-2 xl:grid-cols-12">
+          <div className="xl:col-span-4">
+            <InsightCard
             icon={TrendingUp}
-            title="Improve retention"
+            title="Fix the first weak point"
             body={today.focus_reason || "Strengthen your intro hook to boost retention in the first 30 seconds."}
-            cta="See analysis"
+            cta="Open analysis"
             color="blue"
           />
-          <InsightCard
-            icon={Clock}
-            title={`Best day to upload: ${bestDay}`}
-            body="6:00 PM - 8:00 PM is your peak engagement window based on pattern memory."
-            cta="View time slots"
+          </div>
+          <div className="xl:col-span-4">
+            <InsightCard
+            icon={Clock3}
+            title={`Reserve ${bestDay} for your best upload`}
+            body="That window is currently your best bet. Do not spend it on a filler release."
+            cta="Review timing"
             color="purple"
           />
-          <InsightCard
+          </div>
+          <div className="md:col-span-2 xl:col-span-4">
+            <InsightCard
             icon={Flame}
-            title="Content opportunity"
+            title="Push the winning content lane"
             body={today.opportunity_reason || "Cinematic covers are performing above average in your niche right now."}
             cta="Explore ideas"
             color="amber"
           />
+          </div>
         </motion.div>
       )}
+
+      <motion.div variants={stagger.item} className="rounded-[28px] bg-white/4 p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--color-aria-cyan-dim)] text-[var(--color-aria-cyan)]">
+            <WandSparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 space-y-[var(--space-title-subtitle)]">
+            <p className="text-lg font-semibold text-[var(--color-aria-ink)]">What to do next</p>
+            <p className="text-sm text-[var(--color-aria-muted)]">Three practical moves based on what the dashboard is showing right now.</p>
+          </div>
+        </div>
+        <div className="mt-6 grid grid-cols-1 items-stretch gap-[var(--space-card-grid)] xl:grid-cols-12">
+          <div className="flex h-full flex-col rounded-[22px] bg-white/5 p-6 xl:col-span-4">
+            <p className="mb-[var(--space-title-subtitle)] text-sm font-semibold text-[var(--color-aria-ink)]">1. Repeat the winning promise</p>
+            <p className="mb-[var(--space-block)] line-clamp-3 text-sm leading-6 text-[var(--color-aria-muted)]">Start the next title or concept from the top performer instead of inventing a new frame from scratch.</p>
+            <div className="mt-auto pt-[var(--space-default)]">
+              <p className="text-xs font-medium text-[var(--color-aria-faint)]">Use the current top performer as the baseline.</p>
+            </div>
+          </div>
+          <div className="flex h-full flex-col rounded-[22px] bg-white/5 p-6 xl:col-span-4">
+            <p className="mb-[var(--space-title-subtitle)] text-sm font-semibold text-[var(--color-aria-ink)]">2. Tighten the first 30 seconds</p>
+            <p className="mb-[var(--space-block)] line-clamp-3 text-sm leading-6 text-[var(--color-aria-muted)]">Retention is the leverage point. Improve the intro before changing production style or schedule.</p>
+            <div className="mt-auto pt-[var(--space-default)]">
+              <p className="text-xs font-medium text-[var(--color-aria-faint)]">Fix the opening before changing the format.</p>
+            </div>
+          </div>
+          <div className="flex h-full flex-col rounded-[22px] bg-white/5 p-6 xl:col-span-4">
+            <p className="mb-[var(--space-title-subtitle)] text-sm font-semibold text-[var(--color-aria-ink)]">3. Publish in the proven slot</p>
+            <p className="mb-[var(--space-block)] line-clamp-3 text-sm leading-6 text-[var(--color-aria-muted)]">Use your best timing window intentionally. Save it for the upload with the strongest packaging.</p>
+            <div className="mt-auto pt-[var(--space-default)]">
+              <p className="text-xs font-medium text-[var(--color-aria-faint)]">Reserve high-performing slots for strong packaging.</p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

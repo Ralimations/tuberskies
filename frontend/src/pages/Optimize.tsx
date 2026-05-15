@@ -53,15 +53,15 @@ export default function Optimize() {
   const selected = payload?.metadataActions.find(a => a.video_id === selectedId);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-[var(--space-section)]">
       <PageHeader title="Optimize" subtitle="A.R.I.A. prioritizes underperforming uploads and drafts metadata improvements for review." />
       {status && <div className="rounded-xl border border-[var(--color-aria-blue)]/20 bg-[var(--color-aria-blue-dim)] px-4 py-3 text-sm text-[var(--color-aria-blue)]">{status}</div>}
 
       {/* Guardrails */}
       {payload?.guardrails?.length ? (
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-aria-muted)] mb-3">Safety Guardrails</p>
-          <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6">
+          <p className="mb-[var(--space-default)] text-xs font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">Safety Guardrails</p>
+          <div className="grid grid-cols-2 gap-[var(--space-block)]">
             {payload.guardrails.map(([label, value]) => (
               <div key={label} className="flex items-center gap-2 text-xs">
                 <CheckCircle2 className="h-3.5 w-3.5 text-[var(--color-aria-green)] shrink-0" />
@@ -73,14 +73,14 @@ export default function Optimize() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 gap-[var(--space-card-grid-lg)] 2xl:grid-cols-12">
         {/* Action list */}
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 space-y-3">
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6 space-y-[var(--space-block)] 2xl:col-span-4">
           <p className="text-sm font-semibold text-[var(--color-aria-ink)] flex items-center gap-2">
             <Zap className="h-4 w-4 text-[var(--color-aria-amber)]" /> Metadata Actions
           </p>
           {payload?.metadataActions.length ? (
-            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+            <div className="space-y-[var(--space-tight)] max-h-[420px] overflow-y-auto pr-1">
               {payload.metadataActions.map((a) => (
                 <button key={a.video_id} onClick={() => autoSelect(a)} disabled={busy}
                   className={`w-full text-left rounded-xl p-3 border transition-all ${selectedId === a.video_id ? "border-[var(--color-aria-blue)]/40 bg-[var(--color-aria-blue-dim)]" : "border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] hover:border-[var(--color-aria-border-strong)]"}`}>
@@ -94,24 +94,24 @@ export default function Optimize() {
         </div>
 
         {/* Editor */}
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 space-y-4">
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6 space-y-[var(--space-default)] 2xl:col-span-8">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-[var(--color-aria-ink)]">Metadata Editor</p>
             {selected && <Badge color="amber" dot>{Math.round(selected.engagement_score)} score</Badge>}
           </div>
-          <div className="space-y-3">
+          <div className="space-y-[var(--space-block)]">
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)] mb-1.5">Title</label>
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">Title</label>
               <input value={title} onChange={e => setTitle(e.target.value)} maxLength={100}
-                className="w-full bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-2.5 text-sm text-[var(--color-aria-ink)] outline-none focus:border-[var(--color-aria-blue)] transition-colors" />
+                className="w-full rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-3 text-sm text-[var(--color-aria-ink)] outline-none transition-colors focus:border-[var(--color-aria-blue)]" />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)] mb-1.5">Description</label>
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">Description</label>
               <textarea value={description} onChange={e => setDescription(e.target.value)} rows={5}
                 className="w-full bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-aria-ink)] outline-none focus:border-[var(--color-aria-blue)] transition-colors resize-none" />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)] mb-1.5">Tags (comma-separated)</label>
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">Tags (comma-separated)</label>
               <textarea value={tags} onChange={e => setTags(e.target.value)} rows={2}
                 className="w-full bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-aria-ink)] outline-none focus:border-[var(--color-aria-blue)] transition-colors resize-none" />
             </div>

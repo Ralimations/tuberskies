@@ -23,7 +23,7 @@ export default function Repertoire() {
   const weak = sorted[sorted.length - 1];
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-[var(--space-section)]">
       <PageHeader
         title="Repertoire"
         subtitle="Your complete upload library ranked by engagement performance."
@@ -31,23 +31,27 @@ export default function Repertoire() {
       />
 
       {/* Best / Weakest */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-[var(--space-card-grid)] md:grid-cols-12">
         {best && (
-          <VideoHighlight label="Top Performer" video={best} color="green" icon={Eye} />
+          <div className="md:col-span-6">
+            <VideoHighlight label="Top Performer" video={best} color="green" icon={Eye} />
+          </div>
         )}
         {weak && (
-          <VideoHighlight label="Needs Attention" video={weak} color="amber" icon={Clock} />
+          <div className="md:col-span-6">
+            <VideoHighlight label="Needs Attention" video={weak} color="amber" icon={Clock} />
+          </div>
         )}
       </div>
 
       {/* Search + Table */}
-      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 space-y-4">
-        <div className="flex items-center gap-3">
+      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6 space-y-[var(--space-default)]">
+        <div className="flex items-center gap-[var(--space-block)]">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search videos…"
-            className="flex-1 bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-2.5 text-sm text-[var(--color-aria-ink)] placeholder:text-[var(--color-aria-faint)] outline-none focus:border-[var(--color-aria-blue)] transition-colors"
+            className="flex-1 rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-3 text-sm text-[var(--color-aria-ink)] placeholder:text-[var(--color-aria-faint)] outline-none transition-colors focus:border-[var(--color-aria-blue)]"
           />
           <Badge color="muted">{filtered.length} results</Badge>
         </div>
@@ -79,12 +83,12 @@ function VideoHighlight({
   const c = colorMap[color];
 
   return (
-    <div className={`rounded-2xl border ${c.border} bg-[var(--color-aria-surface)] p-5`}>
-      <Badge color={c.badge} className="mb-3">{label}</Badge>
-      <p className="text-sm font-bold text-[var(--color-aria-ink)] mb-3 leading-snug">
+    <div className={`rounded-2xl border ${c.border} bg-[var(--color-aria-surface)] p-6`}>
+      <Badge color={c.badge} className="mb-[var(--space-block)]">{label}</Badge>
+      <p className="mb-[var(--space-block)] text-sm font-bold leading-snug text-[var(--color-aria-ink)]">
         {String(video.title ?? "Untitled Video")}
       </p>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-[var(--space-card-grid)]">
         <Stat icon={Eye} label="Views" value={Number(video.views ?? 0).toLocaleString()} accent={c.accent} />
         <Stat icon={Percent} label="Retention" value={`${Number(video.retention ?? 0).toFixed(1)}%`} accent={c.accent} />
         <Stat icon={Clock} label="Watch Time" value={`${Math.round(Number(video.watch_time_hours ?? 0))}h`} accent={c.accent} />
@@ -95,7 +99,7 @@ function VideoHighlight({
 
 function Stat({ icon: Icon, label, value, accent }: { icon: typeof Eye; label: string; value: string; accent: string }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-[var(--space-tight)]">
       <Icon className={`h-3.5 w-3.5 ${accent}`} />
       <p className="text-xs font-bold text-[var(--color-aria-ink)]">{value}</p>
       <p className="text-[10px] text-[var(--color-aria-muted)]">{label}</p>

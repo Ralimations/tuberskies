@@ -27,7 +27,7 @@ Card.displayName = "Card";
 
 export function CardHeader({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("px-5 py-4 border-b border-[var(--color-aria-border)]", className)} {...props}>
+    <div className={cn("px-6 py-4 border-b border-[var(--color-aria-border)]", className)} {...props}>
       {children}
     </div>
   );
@@ -35,7 +35,7 @@ export function CardHeader({ className, children, ...props }: HTMLAttributes<HTM
 
 export function CardContent({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("px-5 py-4", className)} {...props}>
+    <div className={cn("px-6 py-4", className)} {...props}>
       {children}
     </div>
   );

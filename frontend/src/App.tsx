@@ -1,15 +1,30 @@
+import { Suspense, lazy } from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 
-// Pages
-import Dashboard from "@/pages/Dashboard";
-import Create from "@/pages/Create";
-import Optimize from "@/pages/Optimize";
-import Publish from "@/pages/Publish";
-import Analyze from "@/pages/Analyze";
-import Learn from "@/pages/Learn";
-import Repertoire from "@/pages/Repertoire";
-import Vault from "@/pages/Vault";
+const Dashboard = lazy(() => import("@/pages/Dashboard"));
+const Create = lazy(() => import("@/pages/Create"));
+const Optimize = lazy(() => import("@/pages/Optimize"));
+const Publish = lazy(() => import("@/pages/Publish"));
+const Analyze = lazy(() => import("@/pages/Analyze"));
+const Learn = lazy(() => import("@/pages/Learn"));
+const Repertoire = lazy(() => import("@/pages/Repertoire"));
+const Vault = lazy(() => import("@/pages/Vault"));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="flex h-[60vh] items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="gradient-btn h-8 w-8 animate-pulse rounded-full" />
+        <p className="text-sm text-[var(--color-aria-muted)]">Loading workspace...</p>
+      </div>
+    </div>
+  );
+}
+
+function withSuspense(element: React.ReactNode) {
+  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+}
 
 const router = createBrowserRouter([
   {
@@ -18,35 +33,35 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Dashboard />,
+        element: withSuspense(<Dashboard />),
       },
       {
         path: "create",
-        element: <Create />,
+        element: withSuspense(<Create />),
       },
       {
         path: "optimize",
-        element: <Optimize />,
+        element: withSuspense(<Optimize />),
       },
       {
         path: "publish",
-        element: <Publish />,
+        element: withSuspense(<Publish />),
       },
       {
         path: "analyze",
-        element: <Analyze />,
+        element: withSuspense(<Analyze />),
       },
       {
         path: "learn",
-        element: <Learn />,
+        element: withSuspense(<Learn />),
       },
       {
         path: "repertoire",
-        element: <Repertoire />,
+        element: withSuspense(<Repertoire />),
       },
       {
         path: "vault",
-        element: <Vault />,
+        element: withSuspense(<Vault />),
       },
     ],
   },

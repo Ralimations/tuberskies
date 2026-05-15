@@ -88,9 +88,10 @@ def build_channel_audit_rows(df: pd.DataFrame, calendar_df: pd.DataFrame, vault_
     last_30 = df.tail(30)
     retention = last_30["retention"].dropna().mean()
     views = last_30["views"].sum()
-    due_soon = calendar_df["target_upload_date"].notna().sum()
-    description_ready = "Yes" if vault_settings.get("default_description", "").strip() else "No"
-    backlog_balance = calendar_df["stage"].value_counts().to_dict()
+    due_soon = calendar_df["target_upload_date"].notna().sum() if "target_upload_date" in calendar_df.columns else 0
+    description_value = vault_settings.get("default_description") or vault_settings.get("DEFAULT_DESCRIPTION") or ""
+    description_ready = "Yes" if str(description_value).strip() else "No"
+    backlog_balance = calendar_df["stage"].value_counts().to_dict() if "stage" in calendar_df.columns else {}
     editing_count = backlog_balance.get("Video Editing", 0)
     idea_count = backlog_balance.get("Song Idea", 0)
 

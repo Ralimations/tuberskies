@@ -9,12 +9,12 @@ data/shorts_workdir/
 shorts_output/
 main_video_*
 broll_video_*
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
 frontend/node_modules/
 frontend/dist/
 api-*.log
-debug_output*.txt
-debug_payload*.txt
-*.err.log
-*.out.log
 data/content_calendar.json
 data/pattern_memory.json

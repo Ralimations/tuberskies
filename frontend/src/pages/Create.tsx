@@ -46,7 +46,7 @@ export default function Create() {
   }
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-[var(--space-section)]">
       <PageHeader
         title="Create"
         subtitle="Develop song concepts, covers, and ideas into stronger theatrical plans."
@@ -64,15 +64,15 @@ export default function Create() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 gap-[var(--space-card-grid-lg)] 2xl:grid-cols-12">
         {/* Concept Builder */}
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 space-y-4">
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6 space-y-[var(--space-default)] 2xl:col-span-8">
           <p className="text-sm font-semibold text-[var(--color-aria-ink)] flex items-center gap-2">
             <Target className="h-4 w-4 text-[var(--color-aria-blue)]" /> Concept Builder
           </p>
-          <div className="space-y-3">
+          <div className="space-y-[var(--space-block)]">
             <div>
-              <label className="block text-xs font-semibold text-[var(--color-aria-muted)] mb-1.5">
+              <label className="mb-2 block text-xs font-semibold text-[var(--color-aria-muted)]">
                 Song concept, niche direction, or cover idea
               </label>
               <textarea
@@ -84,7 +84,7 @@ export default function Create() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[var(--color-aria-muted)] mb-1.5">
+              <label className="mb-2 block text-xs font-semibold text-[var(--color-aria-muted)]">
                 Working title
               </label>
               <input
@@ -95,13 +95,13 @@ export default function Create() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[var(--color-aria-muted)] mb-1.5">
+              <label className="mb-2 block text-xs font-semibold text-[var(--color-aria-muted)]">
                 Generation mode
               </label>
               <select
                 value={action}
                 onChange={(e) => setAction(e.target.value)}
-                className="w-full bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-2.5 text-sm text-[var(--color-aria-ink)] outline-none focus:border-[var(--color-aria-blue)] transition-colors"
+                className="w-full bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] rounded-xl px-4 py-3 text-sm text-[var(--color-aria-ink)] outline-none focus:border-[var(--color-aria-blue)] transition-colors"
               >
                 {ACTIONS.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
               </select>
@@ -110,12 +110,12 @@ export default function Create() {
         </div>
 
         {/* Scorecard */}
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 space-y-4">
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6 space-y-[var(--space-default)] 2xl:col-span-4">
           <p className="text-sm font-semibold text-[var(--color-aria-ink)] flex items-center gap-2">
             <Wand2 className="h-4 w-4 text-[var(--color-aria-purple)]" /> Keyword & Packaging Desk
           </p>
           {score.scorecard.length ? (
-            <div className="space-y-2">
+            <div className="space-y-[var(--space-tight)]">
               {score.scorecard.map((item) => (
                 <div key={item.label} className="flex justify-between items-center py-2 border-b border-[var(--color-aria-border)] last:border-0">
                   <span className="text-xs text-[var(--color-aria-muted)]">{item.label}</span>
@@ -131,7 +131,7 @@ export default function Create() {
 
       {/* Output */}
       {output && (
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6">
           <p className="text-sm font-semibold text-[var(--color-aria-ink)] flex items-center gap-2 mb-3">
             <FileText className="h-4 w-4 text-[var(--color-aria-cyan)]" /> A.R.I.A. Output
           </p>

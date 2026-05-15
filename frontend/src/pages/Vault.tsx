@@ -91,7 +91,7 @@ export default function Vault() {
   const conn = payload?.connection;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-[var(--space-section)]">
       <PageHeader title="The Vault" subtitle="API keys, YouTube credentials, model settings, and creator profile." />
 
       {status && (
@@ -100,14 +100,20 @@ export default function Vault() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3">
-        <ConnCard label="API Key" ok={conn?.api_key} sub="YouTube Data API" />
-        <ConnCard label="OAuth Client" ok={conn?.oauth_client} sub="Write access" />
-        <ConnCard label="Token" ok={conn?.token} sub="Saved locally" />
+      <div className="grid grid-cols-1 gap-[var(--space-card-grid)] md:grid-cols-12">
+        <div className="md:col-span-4">
+          <ConnCard label="API Key" ok={conn?.api_key} sub="YouTube Data API" />
+        </div>
+        <div className="md:col-span-4">
+          <ConnCard label="OAuth Client" ok={conn?.oauth_client} sub="Write access" />
+        </div>
+        <div className="md:col-span-4">
+          <ConnCard label="Token" ok={conn?.token} sub="Saved locally" />
+        </div>
       </div>
 
-      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
-        <div className="mb-4 flex items-center gap-2">
+      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6">
+        <div className="mb-[var(--space-default)] flex items-center gap-[var(--space-tight)]">
           <Link2 className="h-4 w-4 text-[var(--color-aria-blue)]" />
           <p className="text-sm font-semibold text-[var(--color-aria-ink)]">YouTube Connection</p>
           {conn && <Badge color={conn.connected ? "green" : "amber"} dot>{conn.message}</Badge>}
@@ -126,7 +132,7 @@ export default function Vault() {
       </div>
 
       {settings && (
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5 space-y-5">
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6 space-y-[var(--space-section)]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-[var(--color-aria-muted)]" />
@@ -137,7 +143,7 @@ export default function Vault() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-[var(--space-card-grid)] md:grid-cols-2">
             <Field label="Model Name" value={settings.model_name} onChange={(v) => update("model_name", v)} />
             <Field label="Model Endpoint" value={settings.model_endpoint} onChange={(v) => update("model_endpoint", v)} />
             <Field label="YouTube API Key" value={settings.youtube_api_key} onChange={(v) => update("youtube_api_key", v)} secret />
@@ -146,15 +152,15 @@ export default function Vault() {
           </div>
 
           <div className="border-t border-[var(--color-aria-border)] pt-2">
-            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">Creator Profile</p>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <p className="mb-[var(--space-default)] text-xs font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">Creator Profile</p>
+            <div className="grid grid-cols-1 gap-[var(--space-card-grid)] md:grid-cols-2">
               <Field label="Channel Name" value={settings.channel_name} onChange={(v) => update("channel_name", v)} />
               <Field label="Niche" value={settings.niche} onChange={(v) => update("niche", v)} />
               <Field label="Target Audience" value={settings.target_audience} onChange={(v) => update("target_audience", v)} />
               <Field label="Tone" value={settings.tone} onChange={(v) => update("tone", v)} />
             </div>
-            <div className="mt-4">
-              <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">
+            <div className="mt-[var(--space-default)]">
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">
                 Default Description
               </label>
               <textarea
@@ -169,8 +175,8 @@ export default function Vault() {
       )}
 
       {payload?.cache?.length ? (
-        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
-          <p className="mb-4 text-sm font-semibold text-[var(--color-aria-ink)]">Data Freshness</p>
+        <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6">
+          <p className="mb-[var(--space-default)] text-sm font-semibold text-[var(--color-aria-ink)]">Data Freshness</p>
           <DataTable rows={payload.cache} columns={["dataset", "status", "latest_data_date", "today_date"]} />
         </div>
       ) : null}
@@ -180,12 +186,12 @@ export default function Vault() {
 
 function ConnCard({ label, ok, sub }: { label: string; ok?: boolean; sub: string }) {
   return (
-    <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-4 text-center">
+    <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6 text-center">
       <p className="mb-1 text-xs text-[var(--color-aria-muted)]">{label}</p>
       <p className={`font-mono text-xl font-black ${ok ? "text-[var(--color-aria-green)]" : "text-[var(--color-aria-red)]"}`}>
         {ok ? "Yes" : "No"}
       </p>
-      <p className="mt-1 text-[10px] text-[var(--color-aria-faint)]">{sub}</p>
+      <p className="mt-2 text-[10px] text-[var(--color-aria-faint)]">{sub}</p>
     </div>
   );
 }
@@ -193,12 +199,12 @@ function ConnCard({ label, ok, sub }: { label: string; ok?: boolean; sub: string
 function Field({ label, value, onChange, secret }: { label: string; value: string; onChange: (v: string) => void; secret?: boolean }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">{label}</label>
+      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-[var(--color-aria-muted)]">{label}</label>
       <input
         type={secret ? "password" : "text"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-2.5 font-mono text-sm text-[var(--color-aria-ink)] outline-none transition-colors focus:border-[var(--color-aria-blue)]"
+        className="w-full rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-3 font-mono text-sm text-[var(--color-aria-ink)] outline-none transition-colors focus:border-[var(--color-aria-blue)]"
       />
     </div>
   );

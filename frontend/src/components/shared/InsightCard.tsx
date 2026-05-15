@@ -22,21 +22,22 @@ export function InsightCard({ icon: Icon, title, body, cta, color = "blue", onCt
   const c = colorMap[color];
 
   return (
-    <div className="flex h-full flex-col gap-4 rounded-[24px] border border-[var(--color-aria-border)] bg-white/5 p-5 transition-colors hover:border-[var(--color-aria-border-strong)]">
-      <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", c.icon)}>
-        <Icon className="h-5 w-5" />
-      </div>
-      <div>
-        <p className="text-base font-semibold text-[var(--color-aria-ink)]">{title}</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-aria-muted)]">{body}</p>
+    <div className="flex h-full flex-col rounded-[24px] bg-white/5 p-6">
+      <div className="mb-[var(--space-default)] flex items-start gap-[var(--space-block)]">
+        <div className={cn("mt-0.5 flex h-11 w-11 items-center justify-center rounded-2xl", c.icon)}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="mb-[var(--space-title-subtitle)] text-base font-semibold text-[var(--color-aria-ink)]">{title}</p>
+          <p className="min-w-0 pr-1 text-sm leading-6 text-[var(--color-aria-muted)] line-clamp-3">{body}</p>
+        </div>
       </div>
       {cta && (
-        <button
-          onClick={onCta}
-          className={cn("mt-auto text-sm font-semibold text-left transition-opacity hover:opacity-75", c.cta)}
-        >
-          {cta} →
-        </button>
+        <div className="mt-[var(--space-default)] pt-[var(--space-default)]">
+          <button onClick={onCta} className={cn("text-left text-sm font-semibold transition-opacity hover:opacity-75", c.cta)}>
+          {cta} {"->"}
+          </button>
+        </div>
       )}
     </div>
   );

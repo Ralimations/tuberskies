@@ -20,7 +20,7 @@ export default function Publish() {
   const bestDay = String(pub?.best_day ?? "Thursday");
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-[var(--space-section)]">
       <PageHeader title="Publish" subtitle="Upload scheduling and best time recommendations based on your pattern memory." />
 
       {/* Best time hero */}
@@ -29,13 +29,13 @@ export default function Publish() {
         <h2 className="text-2xl font-black text-[var(--color-aria-ink)]">
           Upload on <span className="gradient-text">{bestDay}</span>
         </h2>
-        <p className="text-sm text-[var(--color-aria-muted)] mt-1 mb-5">6:00 PM – 8:00 PM · Highest average retention for your audience.</p>
-        <div className="flex gap-3 flex-wrap">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] text-sm">
+        <p className="mb-6 mt-2 text-sm text-[var(--color-aria-muted)]">6:00 PM – 8:00 PM · Highest average retention for your audience.</p>
+        <div className="flex flex-wrap gap-[var(--space-card-grid)]">
+          <div className="flex items-center gap-2 rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-2 text-sm">
             <Clock className="h-4 w-4 text-[var(--color-aria-blue)]" />
             <span className="text-[var(--color-aria-ink)] font-semibold">6:00 PM – 8:00 PM</span>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--color-aria-surface-3)] border border-[var(--color-aria-border)] text-sm">
+          <div className="flex items-center gap-2 rounded-xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)] px-4 py-2 text-sm">
             <Calendar className="h-4 w-4 text-[var(--color-aria-purple)]" />
             <span className="text-[var(--color-aria-ink)] font-semibold">{bestDay}</span>
           </div>
@@ -43,9 +43,9 @@ export default function Publish() {
       </div>
 
       {/* Weekday heat grid */}
-      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
-        <p className="text-sm font-semibold text-[var(--color-aria-ink)] mb-4">Publish Timing Matrix</p>
-        <div className="grid grid-cols-7 gap-2">
+      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6">
+        <p className="mb-[var(--space-default)] text-sm font-semibold text-[var(--color-aria-ink)]">Publish Timing Matrix</p>
+        <div className="grid grid-cols-7 gap-[var(--space-block)]">
           {DAYS.map((day) => {
             const row = weekdayRows.find((r) => String(r.weekday) === day);
             const score = row ? Number(row.publish_score ?? 0) : 0;
@@ -54,11 +54,11 @@ export default function Publish() {
             const isBest = day === bestDay;
             return (
               <div key={day} className={`rounded-xl p-3 text-center border transition-all ${isBest ? "border-[var(--color-aria-blue)]/40 bg-[var(--color-aria-blue-dim)]" : "border-[var(--color-aria-border)] bg-[var(--color-aria-surface-3)]"}`}>
-                <p className="text-[10px] font-semibold text-[var(--color-aria-muted)] mb-2">{day.slice(0, 3)}</p>
-                <div className="h-12 rounded-lg flex items-end justify-center overflow-hidden bg-[var(--color-aria-bg)]">
+                <p className="mb-2 text-[10px] font-semibold text-[var(--color-aria-muted)]">{day.slice(0, 3)}</p>
+                <div className="flex h-12 items-end justify-center overflow-hidden rounded-lg bg-[var(--color-aria-bg)]">
                   <div className="w-4 rounded-t-sm transition-all" style={{ height: `${Math.max(intensity * 100, 8)}%`, background: isBest ? "var(--color-aria-blue)" : "var(--color-aria-faint)" }} />
                 </div>
-                <p className="text-[10px] font-mono text-[var(--color-aria-muted)] mt-1.5">{score.toFixed(0)}</p>
+                <p className="mt-2 text-[10px] font-mono text-[var(--color-aria-muted)]">{score.toFixed(0)}</p>
               </div>
             );
           })}
@@ -66,8 +66,8 @@ export default function Publish() {
       </div>
 
       {/* Publish history */}
-      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-5">
-        <div className="flex items-center gap-2 mb-4">
+      <div className="rounded-2xl border border-[var(--color-aria-border)] bg-[var(--color-aria-surface)] p-6">
+        <div className="mb-[var(--space-default)] flex items-center gap-[var(--space-tight)]">
           <Upload className="h-4 w-4 text-[var(--color-aria-muted)]" />
           <p className="text-sm font-semibold text-[var(--color-aria-ink)]">Weekday Performance</p>
         </div>

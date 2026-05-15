@@ -25,6 +25,17 @@
   --font-sans: "Sora", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Code", monospace;
 
+  --space-micro: 4px;
+  --space-tight: 8px;
+  --space-title-subtitle: 8px;
+  --space-block: 16px;
+  --space-default: 16px;
+  --space-card-grid: 24px;
+  --space-card-grid-lg: 24px;
+  --space-section: 32px;
+  --space-major: 32px;
+  --space-page: 48px;
+
   --radius-card: 1.5rem;
   --radius-btn: 999px;
 }
